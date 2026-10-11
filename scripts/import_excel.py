@@ -198,7 +198,8 @@ def main():
         stats[sheet_name] = count
 
     OUT_SQL.parent.mkdir(exist_ok=True)
-    OUT_SQL.write_text("BEGIN TRANSACTION;\n" + "\n".join(rows_out) + "\nCOMMIT;\n", encoding="utf-8")
+    # 注意：不能用 BEGIN TRANSACTION 包裹——远程 D1（Durable Objects 存储）会拒绝该语句
+    OUT_SQL.write_text("\n".join(rows_out) + "\n", encoding="utf-8")
 
     lines = [
         f"导入时间: {now}",

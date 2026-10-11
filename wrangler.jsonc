@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "riley-media-log",
-      "database_id": "PLACEHOLDER-run-wrangler-d1-create-on-first-deploy",
+      "database_id": "289e8b2c-4fbb-4b1a-b73d-c6c50d691c68",
       "migrations_dir": "migrations"
     }
   ],
