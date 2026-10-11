@@ -23,7 +23,7 @@
 
 书影集是一个自托管的个人书影音记录工具，起源于「把多年零散的追片记录整理明白」这个朴素需求。
 
-- **自己填**：标题、年份、地区、类型标签、主创、状态、进度、评分、封面、备注、观后感，全部手动可控，不依赖任何外部数据源；
+- **自己填，也能自动填**：标题、年份、地区、类型标签、主创、状态、进度、评分、封面、备注、观后感全部手动可控；也可选接 TMDB / Bangumi 一键补全（默认只填空位、可撤回）；
 - **随便筛**：十一个维度任意组合筛选，多选字段支持「任一匹配 / 同时命中全部」两种模式；
 - **放心里**：数据存在你自己的 Cloudflare D1 里，界面有密码锁，仓库与截图不含任何个人条目数据；
 - **零成本**：Workers 免费额度对个人用量绰绰有余，无需服务器；
@@ -82,16 +82,26 @@
 
 ## 📦 安装
 
+> **完整部署文档 → [docs/部署指南.md](./docs/部署指南.md)**。部署到自己的 Cloudflare、push 即自动部署（GitHub Actions）、Excel 数据导入、日常升级与部署排错都在那里，每一步附验证方法。本节只给最快的本地体验路径。
+
 **环境要求**
 
-- Node.js 20+ 与 npm（开发部署）
-- Python 3（仅 Excel 导入需要，依赖 `openpyxl` 与 `pypinyin`）
-- 一个 Cloudflare 账号（免费套餐即可，仅部署需要）
+- Node.js 22 与 npm（与 CI 配置一致）
+- Python 3 及 `openpyxl`、`pypinyin`（仅 Excel 导入需要）
+- 一个 Cloudflare 账号（免费套餐即可，仅部署上线需要）
 
-**安装步骤**
+**三条部署路线**
+
+| 路线 | 适合 | 一句话说明 |
+| :--- | :--- | :--- |
+| **A · 本地体验** | 先试试看 | localhost 跑起来，不需要 Cloudflare 账号，见下方 4 步 |
+| **B · 部署上线** | 正式使用 | 部署到自己的 Cloudflare，手机随时用，见指南「路线 B」 |
+| **C · push 即部署** | 长期维护 | 配一次 GitHub Actions，以后 push 自动发版，见指南「路线 C」 |
+
+**本地快速开始**
 
 1. **克隆并安装依赖**：`git clone https://github.com/Civinar-Riley/riley-media-log.git && cd riley-media-log && npm install`
-2. **配置本地密钥**：在项目根目录创建 `.dev.vars`（已被 gitignore），内容见下方配置一览；
+2. **配置本地密钥**：项目根目录创建 `.dev.vars`（已被 gitignore），写入 `AUTH_PASSWORD`（登录密码）、`SESSION_SECRET`（随机长字符串）、`API_TOKEN`（脚本令牌）三行即可，格式见指南；
 3. **初始化本地数据库**：`npm run db:migrate:local`；
 4. **启动**：`npm run dev`，打开 `http://localhost:5173`，输入 `AUTH_PASSWORD` 登录即用。
 
@@ -99,14 +109,16 @@
 
 | 项 | 位置 | 说明 |
 | :--- | :--- | :--- |
-| `AUTH_PASSWORD` | `.dev.vars` / `wrangler secret` | 登录密码 |
+| `AUTH_PASSWORD` | `.dev.vars` / `wrangler secret` | 登录密码，也是忘记应用内密码时的应急登录通道 |
 | `SESSION_SECRET` | `.dev.vars` / `wrangler secret` | 签名登录 cookie 的随机长字符串 |
 | `API_TOKEN` | `.dev.vars` / `wrangler secret` | 脚本调用 API 用的 Bearer 令牌 |
-| `database_id` | `wrangler.jsonc` | 部署前替换为 `wrangler d1 create` 返回的真实 ID |
+| `TMDB_API_KEY` | `.dev.vars` / `wrangler secret` | 可选，自动补全（影视类）的 TMDB v3 Key |
+| `BANGUMI_TOKEN` | `.dev.vars` / `wrangler secret` | 可选，自动补全（书漫类）的 Bangumi Token，缺省匿名可用 |
+| `database_id` | `wrangler.jsonc` | 部署到线上前替换为 `wrangler d1 create` 返回的真实 ID |
 
-> ⚠️ **所有密钥只进 `.dev.vars` 或 `wrangler secret`**：`.dev.vars`、`*.xlsm`、`data/` 均已 gitignore，切勿把密码或个人数据提交进仓库。
-> ⚠️ **`wrangler.jsonc` 里的 `database_id` 是占位符**：首次部署前必须替换成 `wrangler d1 create` 返回的真实值。
-> ⚠️ **验证安装成功**：本地能登录并看到片单页（空列表或导入后的数据）即为成功。
+> ⚠️ **`wrangler.jsonc` 里的 `database_id` 是作者自己的真实 ID**：部署到你自己的 Cloudflare 前必须替换（本地 dev 不受影响），详见指南「路线 B」第 2 步。
+> ⚠️ **本地与线上是两套密钥**：`.dev.vars` 只作用于本地 dev，线上要另用 `wrangler secret put` 配置，互不影响。
+> ⚠️ **所有密钥绝不入库**：`.dev.vars`、`*.xlsm`、`data/` 均已 gitignore，切勿把密码或个人数据提交进仓库。
 
 ## 🚀 使用指南
 
@@ -134,20 +146,27 @@
 
 | 方法与路径 | 说明 |
 | :--- | :--- |
+| `POST /api/auth/login` · `POST /api/auth/logout` · `GET /api/auth/status` | 登录 / 登出 / 会话状态（免令牌） |
+| `POST /api/auth/change-password` | 修改登录密码（需登录，验证当前密码） |
 | `GET /api/items` | 条目列表，支持全部筛选参数（`q`、`category`、`status`、`tags`、`tag_mode=any/all`、`authors`、`actors`、`year_min` 等）与 `sort` / `order` / `page` 分页 |
 | `POST /api/items` | 新建条目（JSON） |
 | `GET /api/items/:id` | 条目详情（含观看流水、所在清单、动态） |
-| `PUT /api/items/:id` | 局部更新条目 |
-| `DELETE /api/items/:id` | 删除条目 |
+| `PUT /api/items/:id` · `DELETE /api/items/:id` | 局部更新 / 删除条目 |
 | `GET /api/items/random` | 随机抽一条，可带筛选条件 |
+| `GET /api/items/status-counts` | 四种状态的条目计数（可按 `category` 过滤） |
 | `POST /api/items/:id/viewings` | 追加观看流水 |
 | `GET /api/lists` · `POST /api/lists` | 清单列表 / 新建清单 |
 | `GET /api/stats` | 统计面板全部数据（含作者 / 导演 / 主演 TOP） |
 | `GET /api/settings` · `PUT /api/settings/categories` | 类别定义读取与整体保存 |
 | `PUT /api/settings/aliases` · `POST /api/settings/aliases/normalize` | 人名别名映射保存 / 历史数据一键归一 |
 | `GET /api/export.csv` · `GET /api/export.json` | 导出（可带筛选参数，只导出筛选结果） |
+| `GET /api/fields/facets` | 筛选面板各维度的可选项与计数 |
 | `GET /api/fields/values?field=tags` | 枚举某字段全部取值与计数 |
 | `POST /api/fields/rename?field=tags` | 字段值改名 / 合并（body: `{"from":[...],"to":"..."}`） |
+| `POST /api/autofill/preview` · `POST /api/autofill/apply` · `POST /api/autofill/undo` | 自动补全：搜索候选 / 应用 / 撤回（快照可逆） |
+| `POST /api/autofill/fields` · `GET /api/autofill/logs` | 候选可填字段预览 / 某条目的补全快照流水 |
+| `GET /api/autofill/status` | 两个数据源的配置状态 |
+| `GET /api/img?u=<图片URL>` | 封面图片代理（仅放行 `image.tmdb.org` 与 `lain.bgm.tv` 的 https 图片，边缘缓存） |
 
 示例：
 
@@ -158,16 +177,22 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 ## 📁 仓库结构
 
 ```text
-├── migrations/            # D1 表结构迁移
+├── .github/workflows/     # GitHub Actions：push main 自动迁移数据库并部署
+├── docs/
+│   ├── 部署指南.md         # 完整部署文档（三条路线 / 密钥 / 数据导入 / 升级）
+│   └── screenshots/       # README 截图（演示数据）
+├── migrations/            # D1 表结构迁移（只追加，不修改历史）
 ├── scripts/
-│   ├── import_excel.py    # Excel → SQL 导入脚本（Python，--input 指定文件）
+│   ├── common.py          # 脚本公共客户端（令牌 / 代理 / 翻页取全）
+│   ├── import_excel.py    # Excel → SQL 导入脚本（--input 指定文件）
+│   ├── backfill.py        # 元数据批量回填（变体标题重试 + 报告整批撤回）
+│   ├── item_audit.py      # 条目审计（快照 / 对比 / 统计 / 补全流水，只读）
 │   ├── seed_demo.py       # 演示数据种子（虚构片名，供截图或体验）
 │   └── qa_sweep.py        # API 回归测试（以当前库为基准，任意数据集可跑）
 ├── public/                # PWA manifest、图标、Service Worker
-├── docs/screenshots/      # README 截图（演示数据）
 ├── src/
 │   ├── shared/            # 前后端共享：类型、枚举、筛选参数解析
-│   ├── worker/            # Hono 后端：认证、条目、清单、字段、统计、导出
+│   ├── worker/            # Hono 后端：认证、条目、清单、字段、自动补全、统计、导出
 │   └── web/               # React 前端：页面、组件、主题系统
 ├── 防踩坑.md              # 开发与部署中真实踩过的坑与解法
 ├── wrangler.jsonc         # Cloudflare 配置（Worker + 静态资产 + D1）
@@ -178,9 +203,10 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 
 | 问题 | 回答 |
 | :--- | :--- |
+| 想部署一个自己用？ | 完整步骤见 [docs/部署指南.md](./docs/部署指南.md)：本地体验、部署到 Cloudflare、push 自动部署三条路线，每步附验证方法 |
 | 数据存在哪？会丢吗？ | 在你自己账号的 Cloudflare D1 里；随时可在设置页导出 CSV/JSON 备份 |
 | 忘记密码怎么办？ | 应用内改过密码后忘了：`npx wrangler secret put AUTH_PASSWORD` 设置的应急密钥仍可登录（两把钥匙任一有效），登录后可在设置页重新设置密码 |
-| 能自动从豆瓣/TMDB 拉信息吗？ | 尚未接入；条目已预留 `tmdb_id` 字段，后续可做自动补全 |
+| 能自动从豆瓣/TMDB 拉信息吗？ | 可以。TMDB（影视）+ Bangumi（书漫）双源自动补全已内置：详情页逐条补全，或用 `scripts/backfill.py` 批量回填；需按部署指南配置 `TMDB_API_KEY`（可选）。豆瓣无官方 API，不做主源 |
 | 为什么要密码？ | 部署后在公网可访问，密码是唯一的门锁；纯本地运行同样需要 |
 | 部署要花钱吗？ | Workers 免费额度对单人使用完全够用，D1 免费额度以百万次读计 |
 | 多人能用吗？ | 目前单用户设计（一个密码共用）；数据模型不阻止将来加多用户 |
@@ -188,7 +214,12 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 
 ## 🕘 版本历史
 
-- **v0.1.0（2026-10-11）**：首个可用版本。六大类别记录、四状态 + 进度、评分、观看流水与条目动态、类别自定义与页签、作者 / 导演 / 主演拆分与人名别名归一、十一维筛选（任一 / 全部匹配）、统计面板与图表下钻、随机推荐、个人清单、字段改名合并、CSV/JSON 导出、四套主题、PWA、密码登录 + Bearer 令牌 API、Excel 导入脚本、GitHub Actions 自动部署。详细变更见 [CHANGELOG.md](./CHANGELOG.md)。
+| 版本 | 日期 | 更新内容 |
+| :--- | :--- | :--- |
+| 未发布 | — | 自动补全双源（TMDB / Bangumi）与封面图片代理、应用内修改密码、状态快捷条计数徽标、批量脚本通用化与审计工具 |
+| v0.1.0 | 2026-10-11 | 首个可用版本：六大类别记录、四状态 + 进度、评分、观看流水与条目动态、类别自定义与页签、作者 / 导演 / 主演拆分与人名别名归一、十一维筛选（任一 / 全部匹配）、统计面板与图表下钻、随机推荐、个人清单、字段改名合并、CSV/JSON 导出、四套主题、PWA、密码登录 + Bearer 令牌 API、Excel 导入脚本、GitHub Actions 自动部署 |
+
+版本号以 [package.json](./package.json) 为准，逐项变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 📜 声明与授权
 
@@ -199,5 +230,6 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 ## 🙏 致谢
 
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/) 与 [D1](https://developers.cloudflare.com/d1/)：让个人工具零成本长期在线
+- [TMDB](https://www.themoviedb.org/) 与 [Bangumi](https://bgm.tv)：自动补全的两大开放数据源（遵循其署名与使用条款）
 - [Hono](https://hono.dev)、[React](https://react.dev)、[Tailwind CSS](https://tailwindcss.com)、[Recharts](https://recharts.org)、[pinyin-pro](https://github.com/zh-lx/pinyin-pro)、[pypinyin](https://github.com/mozillazg/python-pinyin)：本项目直接依赖的开源库
 - [NeoDB](https://neodb.social)、[Ryot](https://github.com/IgnisDa/ryot)、[Movary](https://github.com/leepeuker/movary) 等开源追踪器：设计过程中反复参考的功能来源
