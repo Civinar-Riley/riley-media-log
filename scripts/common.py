@@ -22,7 +22,7 @@ def load_token(path='.dev.vars'):
 
 
 def install_proxy(proxy):
-    """proxy 形如 http://127.0.0.1:7897；传空则不设代理。"""
+    """proxy 形如 http://127.0.0.1:<你的代理端口>；传空则不设代理。"""
     if proxy:
         handler = urllib.request.ProxyHandler({'http': proxy, 'https': proxy})
         urllib.request.install_opener(urllib.request.build_opener(handler))

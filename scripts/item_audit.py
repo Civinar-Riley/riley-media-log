@@ -13,7 +13,7 @@
     python scripts/item_audit.py stats --category movie --sample 3
     python scripts/item_audit.py logs --item-id 123
 
-网络：访问 workers.dev 国内直连不通，加 --proxy http://127.0.0.1:7897。
+网络：访问 workers.dev 国内直连不通，加 --proxy http://127.0.0.1:<你的代理端口>。
 """
 import argparse
 import json
@@ -164,7 +164,7 @@ def main():
 def add_common(p):
     p.add_argument('--base', default='http://localhost:5173', help='书影集地址（默认本地 dev）')
     p.add_argument('--token', default=None, help='API_TOKEN（默认读 .dev.vars）')
-    p.add_argument('--proxy', default=None, help='HTTP 代理（如 http://127.0.0.1:7897）')
+    p.add_argument('--proxy', default=None, help='HTTP 代理（如 http://127.0.0.1:<你的代理端口>）')
 
 
 if __name__ == '__main__':
