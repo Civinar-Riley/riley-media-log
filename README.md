@@ -35,19 +35,21 @@
 
 <div align="center">
 
-<img src="./docs/screenshots/stats.png" width="620" alt="统计面板：数字卡与可下钻图表">
+<img src="./docs/screenshots/login.png" width="560" alt="登录页：纸墨质感，印章红点缀">
 
-*统计面板（晨白主题）：四张数字卡 + 图表，点图表直接跳到对应筛选结果*
-
-</div>
-
-<div align="center">
-
-<img src="./docs/screenshots/settings-night.png" width="620" alt="设置页：四套主题切换与导出备份">
-
-*设置页（夜幕主题）：四套整体配色、导出备份与开放接口说明*
+*登录页：纸墨质感，一盏印章红*
 
 </div>
+
+| 片单 · 类别页签（晨白） | 统计面板（晨白） |
+| :---: | :---: |
+| ![片单](./docs/screenshots/list.png) | ![统计](./docs/screenshots/stats.png) |
+
+| 设置 · 类别与人名管理（夜幕） | 手机端（PWA） |
+| :---: | :---: |
+| ![设置](./docs/screenshots/settings-night.png) | ![手机端](./docs/screenshots/mobile.png) |
+
+*截图取自真实界面；为保护隐私，未展示任何真实条目名称。*
 
 ## ✨ 功能特性
 
