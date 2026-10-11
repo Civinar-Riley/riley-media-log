@@ -1,8 +1,160 @@
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Download, FileJson, LogOut } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp, Download, Eye, EyeOff, FileJson, LogOut, Plus, X } from 'lucide-react'
+import { api } from '../api'
 import { useAuth } from '../auth'
+import { useCategories } from '../cat'
 import { THEMES, useTheme } from '../theme'
+import type { CategoryDef } from '../../shared/types'
 import { PageHeader } from '../components/ui'
+
+/** 类别管理：改名 / 排序 / 隐藏 / 新增 / 删除（有条目的类别不可删） */
+function CategoryManager() {
+  const { all } = useCategories()
+  const qc = useQueryClient()
+  const facetsQ = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
+  const counts = useMemo(
+    () => new Map((facetsQ.data?.categories ?? []).map(([k, n]) => [k, n])),
+    [facetsQ.data]
+  )
+  const [draft, setDraft] = useState<CategoryDef[] | null>(null)
+  const [newLabel, setNewLabel] = useState('')
+  const [error, setError] = useState('')
+  const cats = draft ?? all
+
+  const save = useMutation({
+    mutationFn: () => api.saveCategories(cats),
+    onSuccess: () => {
+      setDraft(null)
+      setError('')
+      qc.invalidateQueries({ queryKey: ['settings'] })
+      qc.invalidateQueries({ queryKey: ['facets'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : '保存失败'),
+  })
+
+  function move(i: number, dir: -1 | 1) {
+    const list = [...cats]
+    const j = i + dir
+    if (j < 0 || j >= list.length) return
+    ;[list[i], list[j]] = [list[j], list[i]]
+    setDraft(list)
+  }
+
+  function patchAt(i: number, patch: Partial<CategoryDef>) {
+    setDraft(cats.map((c, idx) => (idx === i ? { ...c, ...patch } : c)))
+  }
+
+  function removeAt(i: number) {
+    const target = cats[i]
+    if ((counts.get(target.id) ?? 0) > 0) {
+      setError(`「${target.label}」下还有条目，只能隐藏不能删除`)
+      return
+    }
+    setDraft(cats.filter((_, idx) => idx !== i))
+  }
+
+  function add() {
+    const label = newLabel.trim()
+    if (!label) return
+    setDraft([...cats, { id: 'cat_' + Math.random().toString(36).slice(2, 8), label }])
+    setNewLabel('')
+  }
+
+  const dirty = draft !== null
+
+  return (
+    <section className="card p-5">
+      <h2 className="serif mb-1 font-medium text-ink">类别管理</h2>
+      <p className="mb-4 text-xs text-faint">
+        页签、记录表单、统计都跟着这份定义走。改名不影响已有条目；有条目的类别只能隐藏、不能删除。
+      </p>
+
+      <ul className="mb-3 space-y-1.5">
+        {cats.map((c, i) => (
+          <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-md border border-line px-2.5 py-1.5">
+            <div className="flex flex-col">
+              <button className="cursor-pointer text-faint hover:text-brand disabled:opacity-30" disabled={i === 0} onClick={() => move(i, -1)} aria-label="上移">
+                <ArrowUp className="h-3 w-3" />
+              </button>
+              <button className="cursor-pointer text-faint hover:text-brand disabled:opacity-30" disabled={i === cats.length - 1} onClick={() => move(i, 1)} aria-label="下移">
+                <ArrowDown className="h-3 w-3" />
+              </button>
+            </div>
+            <input
+              className="input h-8 w-28"
+              value={c.label}
+              maxLength={20}
+              onChange={(e) => patchAt(i, { label: e.target.value.trim() || c.label })}
+              onFocus={() => setDraft(cats)}
+            />
+            <span className="text-xs text-faint">{counts.get(c.id) ?? 0} 条</span>
+            <button
+              className={`chip ${c.finish ? 'chip-on' : ''}`}
+              title="该类别是否使用「完结状态」字段（连载/完结/烂尾）"
+              onClick={() => {
+                setDraft(cats)
+                patchAt(i, { finish: !c.finish })
+              }}
+            >
+              完结状态
+            </button>
+            <button
+              className={`chip ${c.hidden ? 'chip-on' : ''}`}
+              title={c.hidden ? '已隐藏，点击恢复显示' : '点击隐藏（数据保留）'}
+              onClick={() => {
+                setDraft(cats)
+                patchAt(i, { hidden: !c.hidden })
+              }}
+            >
+              {c.hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+              {c.hidden ? '已隐藏' : '显示中'}
+            </button>
+            <button
+              className="btn btn-danger ml-auto h-7 px-2"
+              title={(counts.get(c.id) ?? 0) > 0 ? '还有条目，不能删除' : '删除该类别'}
+              onClick={() => {
+                setDraft(cats)
+                removeAt(i)
+              }}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          className="input h-8 w-40"
+          placeholder="新类别名，如 话剧"
+          value={newLabel}
+          maxLength={20}
+          onChange={(e) => setNewLabel(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+        />
+        <button className="btn h-8" onClick={add} disabled={!newLabel.trim()}>
+          <Plus className="h-3.5 w-3.5" />
+          添加
+        </button>
+        {dirty && (
+          <>
+            <span className="ml-auto text-xs text-faint">有未保存的修改</span>
+            <button className="btn h-8" onClick={() => { setDraft(null); setError('') }}>
+              放弃
+            </button>
+            <button className="btn btn-primary h-8" disabled={save.isPending} onClick={() => save.mutate()}>
+              {save.isPending ? '保存中…' : '保存类别'}
+            </button>
+          </>
+        )}
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </section>
+  )
+}
 
 export default function SettingsPage() {
   const { theme, followSystem, setTheme, setFollowSystem } = useTheme()
@@ -46,6 +198,9 @@ export default function SettingsPage() {
           跟随系统昼夜自动切换（白天晨白，晚上夜幕）
         </label>
       </section>
+
+      {/* 类别管理 */}
+      <CategoryManager />
 
       {/* 导出 */}
       <section className="card p-5">

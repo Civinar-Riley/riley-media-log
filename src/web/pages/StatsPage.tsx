@@ -15,7 +15,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api } from '../api'
-import { CATEGORY_LABELS } from '../../shared/types'
+import { useCategories } from '../cat'
 import { EmptyState, Loading, PageHeader } from '../components/ui'
 
 /* 图表配色：全部引用主题变量，随主题联动 */
@@ -103,6 +103,7 @@ function TopBar({
 export default function StatsPage() {
   const navigate = useNavigate()
   const statsQ = useQuery({ queryKey: ['stats'], queryFn: api.stats })
+  const { labelOf } = useCategories()
 
   if (statsQ.isLoading) return <Loading />
   const stats = statsQ.data
@@ -165,7 +166,7 @@ export default function StatsPage() {
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie
-                data={stats.by_category.map((r) => ({ name: CATEGORY_LABELS[r.key as keyof typeof CATEGORY_LABELS] ?? r.key, value: r.count, key: r.key }))}
+                data={stats.by_category.map((r) => ({ name: labelOf(r.key), value: r.count, key: r.key }))}
                 dataKey="value"
                 nameKey="name"
                 innerRadius={55}

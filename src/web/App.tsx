@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from './auth'
+import { CategoriesProvider } from './cat'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import ListPage from './pages/ListPage'
@@ -34,7 +35,9 @@ export default function App() {
       <Route
         element={
           <RequireAuth>
-            <Layout />
+            <CategoriesProvider>
+              <Layout />
+            </CategoriesProvider>
           </RequireAuth>
         }
       >

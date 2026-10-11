@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Dices } from 'lucide-react'
 import { api, ApiError } from '../api'
-import { CATEGORY_LABELS } from '../../shared/types'
+import { useCategories } from '../cat'
 import { CategoryBadge, CoverImage, EmptyState, Loading, RatingStars, StatusBadge } from '../components/ui'
 
 export default function RandomPage() {
   const qc = useQueryClient()
+  const { labelOf } = useCategories()
   const [scope, setScope] = useState<'want' | 'all'>('want')
   const [seed, setSeed] = useState(0)
 
@@ -72,7 +73,7 @@ export default function RandomPage() {
             <p className="text-sm text-faint">
               {[
                 item.year,
-                CATEGORY_LABELS[item.category],
+                labelOf(item.category),
                 item.regions.join(' / '),
                 item.tags.join(' / '),
               ]

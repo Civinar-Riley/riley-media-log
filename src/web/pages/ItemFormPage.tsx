@@ -3,8 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import {
-  CATEGORIES,
-  CATEGORY_LABELS,
   CHANNEL_SUGGESTIONS,
   FINISH_LABELS,
   FINISH_STATUSES,
@@ -13,13 +11,14 @@ import {
   STATUS_LABELS,
   TAG_PRESETS,
 } from '../../shared/types'
-import type { Category, FinishStatus, Item, Status } from '../../shared/types'
+import type { FinishStatus, Item, Status } from '../../shared/types'
 import { Loading, PageHeader, RatingStars } from '../components/ui'
 import { TagInput } from '../components/TagInput'
+import { useCategories } from '../cat'
 
 interface FormState {
   title: string
-  category: Category
+  category: string
   status: Status
   year: string
   season: string
@@ -86,16 +85,16 @@ function toForm(item: Item): FormState {
   }
 }
 
-function Segmented<T extends string>({
+function Segmented({
   options,
   value,
   onChange,
   labels,
 }: {
-  options: readonly T[]
-  value: T
-  onChange: (v: T) => void
-  labels: Record<T, string>
+  options: string[]
+  value: string
+  onChange: (v: string) => void
+  labels: Record<string, string>
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -106,7 +105,7 @@ function Segmented<T extends string>({
           className={`chip ${value === opt ? 'chip-on' : ''}`}
           onClick={() => onChange(opt)}
         >
-          {labels[opt]}
+          {labels[opt] ?? opt}
         </button>
       ))}
     </div>
@@ -126,9 +125,14 @@ export default function ItemFormPage() {
     enabled: editing,
   })
   const facets = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
+  const { visible: visibleCats, finishOf } = useCategories()
 
   const [form, setForm] = useState<FormState>(EMPTY)
   const [error, setError] = useState('')
+  const catOptions = visibleCats.some((c) => c.id === form.category)
+    ? visibleCats
+    : [...visibleCats, { id: form.category, label: form.category }]
+  const catLabels = Object.fromEntries(catOptions.map((c) => [c.id, c.label]))
 
   useEffect(() => {
     if (editing && existing.data) setForm(toForm(existing.data))
@@ -196,11 +200,11 @@ export default function ItemFormPage() {
         <div className="grid gap-5 md:grid-cols-2">
           <div>
             <label className="label mb-1.5 block">类别</label>
-            <Segmented options={CATEGORIES} value={form.category} onChange={(v) => set('category', v)} labels={CATEGORY_LABELS} />
+            <Segmented options={catOptions.map((c) => c.id)} value={form.category} onChange={(v) => set('category', v)} labels={catLabels} />
           </div>
           <div>
             <label className="label mb-1.5 block">状态</label>
-            <Segmented options={STATUSES} value={form.status} onChange={(v) => set('status', v)} labels={STATUS_LABELS} />
+            <Segmented options={[...STATUSES]} value={form.status} onChange={(v) => set('status', v as Status)} labels={STATUS_LABELS} />
           </div>
         </div>
 
@@ -289,7 +293,7 @@ export default function ItemFormPage() {
               )}
             </div>
           </div>
-          {(form.category === 'novel' || form.category === 'manga') && (
+          {finishOf(form.category) && (
             <div>
               <label className="label mb-1.5 block">完结状态</label>
               <div className="flex gap-1.5">

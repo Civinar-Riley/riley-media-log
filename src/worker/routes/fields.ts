@@ -8,9 +8,10 @@ const ARRAY_FIELDS = new Set<FieldName>(['tags', 'regions', 'creators'])
 
 export const fieldsRoutes = new Hono<{ Bindings: Env }>()
 
-/** 筛选栏一次拉齐：四个字段的全部取值 + 年份范围 */
+/** 筛选栏一次拉齐：类别与四个字段的全部取值 + 年份范围 */
 fieldsRoutes.get('/facets', async (c) => {
-  const [tags, regions, creators, channels, years] = await Promise.all([
+  const [cats, tags, regions, creators, channels, years] = await Promise.all([
+    c.env.DB.prepare(`SELECT category AS v, COUNT(*) AS n FROM items GROUP BY category`).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
       `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.tags) je
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
@@ -30,6 +31,7 @@ fieldsRoutes.get('/facets', async (c) => {
     c.env.DB.prepare(`SELECT MIN(year) AS y_min, MAX(year) AS y_max FROM items`).first<{ y_min: number | null; y_max: number | null }>(),
   ])
   return c.json({
+    categories: cats.results.map((r) => [r.v, r.n] as [string, number]),
     tags: tags.results.map((r) => [r.v, r.n] as [string, number]),
     regions: regions.results.map((r) => [r.v, r.n] as [string, number]),
     creators: creators.results.map((r) => [r.v, r.n] as [string, number]),

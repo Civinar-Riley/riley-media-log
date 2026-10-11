@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CATEGORIES, STATUSES, FINISH_STATUSES } from '../shared/types'
+import { STATUSES, FINISH_STATUSES } from '../shared/types'
 
 const strArr = z
   .array(z.string().trim().min(1).max(60))
@@ -9,7 +9,7 @@ const strArr = z
 
 export const itemCreateSchema = z.object({
   title: z.string().trim().min(1, '标题不能为空').max(200),
-  category: z.enum(CATEGORIES),
+  category: z.string().trim().min(1, '类别不能为空').max(40),
   year: z.number().int().min(1850).max(2100).nullish().transform((v) => v ?? null),
   season: z.number().int().min(1).max(200).nullish().transform((v) => v ?? null),
   regions: strArr,
@@ -60,6 +60,31 @@ export const fieldRenameSchema = z.object({
 })
 
 export const loginSchema = z.object({ password: z.string().min(1).max(200) })
+
+const categoryDefSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1, '类别 id 不能为空')
+    .max(40)
+    .regex(/^[A-Za-z0-9_-]+$/, '类别 id 只能包含字母、数字、- 和 _'),
+  label: z.string().trim().min(1, '类别名不能为空').max(20),
+  hidden: z.boolean().optional(),
+  finish: z.boolean().optional(),
+})
+
+export const categoriesSchema = z
+  .object({ categories: z.array(categoryDefSchema).min(1, '至少保留一个类别').max(30) })
+  .superRefine((val, ctx) => {
+    const ids = new Set<string>()
+    const labels = new Set<string>()
+    for (const cat of val.categories) {
+      if (ids.has(cat.id)) ctx.addIssue({ code: 'custom', message: `类别 id 重复：${cat.id}` })
+      ids.add(cat.id)
+      if (labels.has(cat.label)) ctx.addIssue({ code: 'custom', message: `类别名重复：${cat.label}` })
+      labels.add(cat.label)
+    }
+  })
 
 /** 解析 JSON 请求体并校验；不合法时直接返回 400 Response */
 export async function readBody<S extends z.ZodType>(

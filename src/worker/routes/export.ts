@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { parseFilters, buildWhere } from '../filters'
 import { mapItem, nowISO, todayLocal } from '../db'
-import { CATEGORY_LABELS, STATUS_LABELS, FINISH_LABELS } from '../../shared/types'
+import { readCategories } from './settings'
+import { STATUS_LABELS, FINISH_LABELS } from '../../shared/types'
 import type { Item } from '../../shared/types'
 
 export const exportRoutes = new Hono<{ Bindings: Env }>()
@@ -16,10 +17,10 @@ function csvCell(v: unknown): string {
   return `"${s.replace(/"/g, '""')}"`
 }
 
-function itemToRow(it: Item): unknown[] {
+function itemToRow(it: Item, categoryLabel: (id: string) => string): unknown[] {
   return [
     it.title,
-    CATEGORY_LABELS[it.category] ?? it.category,
+    categoryLabel(it.category),
     it.year ?? '',
     it.season ?? '',
     it.regions.join('/'),
@@ -58,8 +59,12 @@ async function loadAll(c: ExportCtx): Promise<Item[]> {
 }
 
 exportRoutes.get('/export.csv', async (c) => {
-  const items = await loadAll(c)
-  const lines = [CSV_HEADERS.map(csvCell).join(','), ...items.map((it) => itemToRow(it).map(csvCell).join(','))]
+  const [items, cats] = await Promise.all([loadAll(c), readCategories(c.env.DB)])
+  const labelMap = new Map(cats.map((cat) => [cat.id, cat.label]))
+  const lines = [
+    CSV_HEADERS.map(csvCell).join(','),
+    ...items.map((it) => itemToRow(it, (id) => labelMap.get(id) ?? id).map(csvCell).join(',')),
+  ]
   const body = '\uFEFF' + lines.join('\r\n')
   const date = todayLocal().replace(/-/g, '')
   return new Response(body, {

@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, LayoutGrid, List, Plus, SlidersHorizontal, X } from 'lucide-react'
 import { api, filtersToQuery } from '../api'
 import { parseFilters } from '../../shared/filters'
-import { CATEGORIES, CATEGORY_LABELS, STATUSES, STATUS_LABELS, FINISH_STATUSES, FINISH_LABELS } from '../../shared/types'
-import type { Category, Status, FinishStatus, Item, ItemFilters, Facets } from '../../shared/types'
+import { STATUSES, STATUS_LABELS, FINISH_STATUSES, FINISH_LABELS } from '../../shared/types'
+import type { Item, ItemFilters, Facets, Status, FinishStatus } from '../../shared/types'
 import { EmptyState, Loading, PageHeader, Pagination, RatingStars, StatusBadge, CategoryBadge } from '../components/ui'
 import { ItemCard } from '../components/ItemCard'
+import { useCategories } from '../cat'
 
 /* ---------------- 筛选面板 ---------------- */
 
@@ -119,17 +120,6 @@ function FilterBar({
   return (
     <div className="card anim space-y-4 p-4">
       <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <p className="label mb-1.5">类别</p>
-          <ChipRow
-            options={CATEGORIES.map((c) => CATEGORY_LABELS[c])}
-            selected={filters.category?.map((c) => CATEGORY_LABELS[c as Category]) ?? []}
-            onToggle={(label) => {
-              const cat = CATEGORIES.find((c) => CATEGORY_LABELS[c] === label)!
-              onChange({ category: toggleIn(filters.category ?? [], cat) })
-            }}
-          />
-        </div>
         <div>
           <p className="label mb-1.5">状态</p>
           <ChipRow
@@ -329,6 +319,26 @@ export default function ListPage() {
   )
   const [showFilters, setShowFilters] = useState(false)
   const [searchText, setSearchText] = useState(filters.q ?? '')
+  const restored = useRef(false)
+
+  // 记住上次浏览状态：进入片单且 URL 无任何参数时，恢复完整筛选组合
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    if (![...sp.keys()].length) {
+      const saved = localStorage.getItem('rml-last-view')
+      if (saved) setSp(new URLSearchParams(saved))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('rml-last-view', filtersToQuery(filters))
+  }, [filters])
+
+  function setCategory(id: string | null) {
+    patchFilters({ category: id ? [id] : [] })
+  }
 
   const itemsQ = useQuery({
     queryKey: ['items', sp.toString()],
@@ -336,6 +346,11 @@ export default function ListPage() {
     placeholderData: (prev) => prev,
   })
   const facetsQ = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
+  const { visible: visibleCats } = useCategories()
+  const catCounts = useMemo(
+    () => new Map((facetsQ.data?.categories ?? []).map(([k, n]) => [k, n])),
+    [facetsQ.data]
+  )
 
   useEffect(() => setSearchText(filters.q ?? ''), [filters.q])
   useEffect(() => {
@@ -416,6 +431,51 @@ export default function ListPage() {
           </>
         }
       />
+
+      {/* 类别页签 */}
+      <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1">
+        <button
+          onClick={() => setCategory(null)}
+          className={`flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm transition ${
+            !filters.category?.length ? 'bg-brand font-medium text-brand-ink' : 'text-soft hover:bg-muted'
+          }`}
+        >
+          全部
+          <span className="text-[11px] opacity-70">
+            {visibleCats.reduce((sum, cd) => sum + (catCounts.get(cd.id) ?? 0), 0)}
+          </span>
+        </button>
+        {visibleCats.map((cd) => (
+          <button
+            key={cd.id}
+            onClick={() => setCategory(cd.id)}
+            className={`flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm transition ${
+              filters.category?.length === 1 && filters.category[0] === cd.id
+                ? 'bg-brand font-medium text-brand-ink'
+                : 'text-soft hover:bg-muted'
+            }`}
+          >
+            {cd.label}
+            <span className="text-[11px] opacity-70">{catCounts.get(cd.id) ?? 0}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 状态快捷条（与筛选器里的状态是同一参数） */}
+      <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+        {STATUSES.map((s) => {
+          const active = filters.status?.length === 1 && filters.status[0] === s
+          return (
+            <button
+              key={s}
+              className={`chip ${active ? 'chip-on' : ''}`}
+              onClick={() => patchFilters({ status: active ? [] : [s] })}
+            >
+              {STATUS_LABELS[s]}
+            </button>
+          )
+        })}
+      </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input

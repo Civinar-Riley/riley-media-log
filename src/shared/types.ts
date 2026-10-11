@@ -12,6 +12,27 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   manga: '漫画',
 }
 
+/** 类别定义：存于 settings 表，任何部署者可自定义（默认六类只是初始值） */
+export interface CategoryDef {
+  /** 稳定标识，items.category 引用它；不含中文 */
+  id: string
+  /** 显示名，任意语言 */
+  label: string
+  /** 隐藏后不出现在页签/表单，已有条目与数据保留 */
+  hidden?: boolean
+  /** 该类别是否显示「完结状态」字段（如小说/漫画的连载状态） */
+  finish?: boolean
+}
+
+export const DEFAULT_CATEGORIES: CategoryDef[] = [
+  { id: 'movie', label: '电影' },
+  { id: 'series', label: '剧集' },
+  { id: 'anime', label: '动漫' },
+  { id: 'variety', label: '综艺' },
+  { id: 'novel', label: '小说', finish: true },
+  { id: 'manga', label: '漫画', finish: true },
+]
+
 export const STATUSES = ['want', 'watching', 'done', 'dropped'] as const
 export type Status = (typeof STATUSES)[number]
 
@@ -52,7 +73,7 @@ export const REGION_PRESETS = [
 export interface Item {
   id: number
   title: string
-  category: Category
+  category: string
   year: number | null
   season: number | null
   regions: string[]
@@ -114,6 +135,7 @@ export type FieldName = 'tags' | 'regions' | 'creators' | 'channel'
 export type ValueCount = [string, number]
 
 export interface Facets {
+  categories: ValueCount[]
   tags: ValueCount[]
   regions: ValueCount[]
   creators: ValueCount[]

@@ -1,4 +1,4 @@
-import type { Item, Category, Status, FinishStatus } from '../shared/types'
+import type { Item, Status, FinishStatus } from '../shared/types'
 
 export function nowISO(): string {
   return new Date().toISOString()
@@ -25,7 +25,7 @@ export function mapItem(row: Record<string, unknown>): Item {
   return {
     id: row.id as number,
     title: row.title as string,
-    category: row.category as Category,
+    category: row.category as string,
     year: (row.year as number | null) ?? null,
     season: (row.season as number | null) ?? null,
     regions: parseArr(row.regions as string),

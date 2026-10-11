@@ -1,5 +1,5 @@
 import type { ItemFilters } from './types'
-import { CATEGORIES, STATUSES, FINISH_STATUSES } from './types'
+import { STATUSES, FINISH_STATUSES } from './types'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -25,7 +25,8 @@ function boolVal(sp: URLSearchParams, key: string): boolean | undefined {
   return undefined
 }
 
-/** URL 参数 → 结构化筛选条件（前后端共用，保证语义一致） */
+/** URL 参数 → 结构化筛选条件（前后端共用，保证语义一致）
+ *  注意：category 不做白名单校验——类别可由部署者自定义，任意 id 合法 */
 export function parseFilters(sp: URLSearchParams): ItemFilters {
   const q = sp.get('q')?.trim()
   const watched_from = sp.get('watched_from') ?? undefined
@@ -33,7 +34,7 @@ export function parseFilters(sp: URLSearchParams): ItemFilters {
   const sortRaw = sp.get('sort') as ItemFilters['sort'] | null
   return {
     q: q || undefined,
-    category: csvList(sp, 'category', CATEGORIES),
+    category: csvList(sp, 'category'),
     status: csvList(sp, 'status', STATUSES),
     year_min: intVal(sp.get('year_min')),
     year_max: intVal(sp.get('year_max')),

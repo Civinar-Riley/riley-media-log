@@ -1,5 +1,6 @@
 import type {
   Activity,
+  CategoryDef,
   Facets,
   Item,
   ItemFilters,
@@ -96,7 +97,13 @@ export const api = {
   removeListItem: (id: number, itemId: number) =>
     req<{ ok: boolean }>(`/api/lists/${id}/items/${itemId}`, { method: 'DELETE' }),
 
-  facets: () => req<Facets>('/api/facets'),
+  facets: () => req<Facets>('/api/fields/facets'),
+  getSettings: () => req<{ categories: CategoryDef[] }>('/api/settings'),
+  saveCategories: (categories: CategoryDef[]) =>
+    req<{ categories: CategoryDef[] }>('/api/settings/categories', {
+      method: 'PUT',
+      body: JSON.stringify({ categories }),
+    }),
   fieldValues: (field: string) => req<[string, number][]>(`/api/fields/values?field=${field}`),
   renameField: (field: string, from: string | string[], to: string) =>
     req<{ updated: number }>(`/api/fields/rename?field=${field}`, {

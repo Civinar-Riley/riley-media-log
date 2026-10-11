@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Star, ImageOff } from 'lucide-react'
-import { CATEGORY_LABELS, STATUS_LABELS, FINISH_LABELS } from '../../shared/types'
-import type { Category, Status, FinishStatus } from '../../shared/types'
+import { STATUS_LABELS, FINISH_LABELS } from '../../shared/types'
+import type { Status, FinishStatus } from '../../shared/types'
+import { useCategories } from '../cat'
 
 /** 封面图：加载失败或无图时回退到书名首字占位 */
 export function CoverImage({
@@ -57,8 +58,9 @@ export function StatusBadge({ status }: { status: Status }) {
   )
 }
 
-export function CategoryBadge({ category }: { category: Category }) {
-  return <span className="seal-tag">{CATEGORY_LABELS[category]}</span>
+export function CategoryBadge({ category }: { category: string }) {
+  const { labelOf } = useCategories()
+  return <span className="seal-tag">{labelOf(category)}</span>
 }
 
 export function FinishBadge({ status }: { status: FinishStatus | null }) {
