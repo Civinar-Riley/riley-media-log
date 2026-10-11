@@ -74,7 +74,8 @@ def title_variants(title):
     m = re.search(r'[（(]([^）)]+)[）)]', t)
     if m:
         add(re.sub(r'[（(][^）)]*[）)]', '', t))   # 去括号段（全半角括号都算）
-        add(re.sub(r'^[^（(]+', m.group(1), t))    # 括号内别名替换主体：变种特攻（X战警）3 → X战警3
+        # 主标题+括号整体替换为括号内别名：变种特攻（X战警）3 → X战警3
+        add(re.sub(r'^[^（(]+[（(][^）)]*[）)]', m.group(1), t))
     latin = re.sub(r"\s*[A-Za-z][A-Za-z0-9\s'’：:-]*$", '', t)
     if re.search(r'[\u4e00-\u9fff]', latin):
         add(latin)                           # 去尾部英文副标题：死侍2：我爱我家Deadpool2 → 死侍2：我爱我家
