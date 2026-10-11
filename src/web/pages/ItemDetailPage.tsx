@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarPlus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { api } from '../api'
 import { CategoryBadge, CoverImage, FinishBadge, Loading, Modal, PageHeader, RatingStars, StatusBadge } from '../components/ui'
+import { BackLink } from '../components/ui'
 
 function fmtDateTime(iso: string): string {
   return iso.slice(0, 16).replace('T', ' ')
@@ -80,6 +81,9 @@ export default function ItemDetailPage() {
 
   return (
     <div>
+      <div className="mb-3">
+        <BackLink fallback="/" label="返回片单" />
+      </div>
       <PageHeader
         title="条目详情"
         right={

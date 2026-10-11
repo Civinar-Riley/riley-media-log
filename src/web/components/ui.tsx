@@ -1,9 +1,26 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Star, ImageOff } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Star, ImageOff } from 'lucide-react'
 import { STATUS_LABELS, FINISH_LABELS } from '../../shared/types'
 import type { Status, FinishStatus } from '../../shared/types'
 import { useCategories } from '../cat'
+
+/** 返回按钮：从站内点进来的原路返回；直接输入/刷新进来的落到 fallback */
+export function BackLink({ fallback = '/', label = '返回' }: { fallback?: string; label?: string }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const fromSite = location.key !== 'default'
+  return (
+    <button
+      className="inline-flex cursor-pointer items-center gap-1 text-sm text-faint transition hover:text-brand"
+      onClick={() => (fromSite ? navigate(-1) : navigate(fallback, { replace: true }))}
+    >
+      <ArrowLeft className="h-4 w-4" />
+      {label}
+    </button>
+  )
+}
 
 /** 封面图：加载失败或无图时回退到书名首字占位 */
 export function CoverImage({

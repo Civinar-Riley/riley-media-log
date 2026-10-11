@@ -13,6 +13,7 @@ import {
 } from '../../shared/types'
 import type { FinishStatus, Item, Status } from '../../shared/types'
 import { Loading, PageHeader, RatingStars } from '../components/ui'
+import { BackLink } from '../components/ui'
 import { TagInput } from '../components/TagInput'
 import { useCategories } from '../cat'
 
@@ -178,6 +179,9 @@ export default function ItemFormPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
+      <div className="mb-3">
+        <BackLink fallback={editing ? `/items/${itemId}` : '/'} label={editing ? '返回条目' : '返回片单'} />
+      </div>
       <PageHeader
         title={editing ? '编辑条目' : '记一笔'}
         sub={editing ? '改动会记进条目动态' : '填个标题就能存，其他随时补'}

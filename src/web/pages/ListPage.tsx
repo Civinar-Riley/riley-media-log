@@ -281,8 +281,12 @@ function FilterBar({
 /* ---------------- 列表视图行 ---------------- */
 
 function ItemRow({ item }: { item: Item }) {
+  const navigate = useNavigate()
   return (
-    <tr className="border-t border-line transition hover:bg-muted/60">
+    <tr
+      className="cursor-pointer border-t border-line transition hover:bg-muted/60"
+      onClick={() => navigate(`/items/${item.id}`)}
+    >
       <td className="max-w-56 px-3 py-2.5">
         <Link to={`/items/${item.id}`} className="serif font-medium text-ink hover:text-brand">
           {item.title}
