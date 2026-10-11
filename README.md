@@ -33,14 +33,6 @@
 
 ## 📷 界面预览
 
-<div align="center">
-
-<img src="./docs/screenshots/login.png" width="560" alt="登录页：纸墨质感，印章红点缀">
-
-*登录页：纸墨质感，一盏印章红*
-
-</div>
-
 | 片单 · 类别页签（晨白） | 统计面板（晨白） |
 | :---: | :---: |
 | ![片单](./docs/screenshots/list.png) | ![统计](./docs/screenshots/stats.png) |
