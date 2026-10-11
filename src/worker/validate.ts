@@ -75,6 +75,7 @@ export const autofillPreviewSchema = z.object({
   item_id: z.number().int().positive(),
   source: autofillSourceSchema.optional(),
   query: z.string().trim().max(200).optional(),
+  year: z.number().int().nullable().optional(), // 显式传 null = 不带年份过滤搜索
 })
 
 export const autofillApplySchema = z.object({

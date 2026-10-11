@@ -43,7 +43,10 @@ autofillRoutes.post('/preview', async (c) => {
     )
   }
   const query = (data.query ?? (item.title_cn as string) ?? (item.title as string) ?? '').trim()
-  const year = typeof item.year === 'number' ? item.year : undefined
+  let year: number | undefined
+  if (data.year === null) year = undefined
+  else if (typeof data.year === 'number') year = data.year
+  else if (typeof item.year === 'number') year = item.year
   try {
     const { candidates } = await searchCandidates(c.env, category, source, query, year)
     return c.json({ source, candidates })

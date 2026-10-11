@@ -16,6 +16,7 @@
 """
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.error
@@ -53,12 +54,39 @@ def api(base, token, path, method='GET', body=None):
         raise RuntimeError(f'网络错误（国内访问 workers.dev 需代理，可用 --proxy 指定）: {e.reason}')
 
 
+def title_variants(title):
+    """标题变体：库内标题常带季数后缀/括号别名，外部源搜不到时逐个尝试。
+    例：帕丁顿熊1→帕丁顿熊；零零七：无暇赴死→007：无暇赴死；变种特攻（X战警）3→X战警3。"""
+    seen, out = set(), []
+
+    def add(v):
+        v = v.strip()
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+
+    add(title)
+    t = title.replace(' ', '').replace('\u3000', '')
+    add(t)
+    add(re.sub(r'\d+$', '', t))              # 去尾部序号
+    if '零零七' in t:
+        add(t.replace('零零七', '007'))
+    m = re.search(r'[（(]([^）)]+)[）)]', t)
+    if m:
+        add(re.sub(r'[（(][^）)]*[）)]', '', t))   # 去括号段（全半角括号都算）
+        add(re.sub(r'^[^（(]+', m.group(1), t))    # 括号内别名替换主体：变种特攻（X战警）3 → X战警3
+    latin = re.sub(r"\s*[A-Za-z][A-Za-z0-9\s'’：:-]*$", '', t)
+    if re.search(r'[\u4e00-\u9fff]', latin):
+        add(latin)                           # 去尾部英文副标题：死侍2：我爱我家Deadpool2 → 死侍2：我爱我家
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(description='批量回填封面等元数据')
     parser.add_argument('--base', default=BASE, help='书影集地址（默认本地 dev）')
     parser.add_argument('--token', default=None, help='API_TOKEN（默认读 .dev.vars）')
     parser.add_argument('--category', default=None, help='只处理某个类别 id（如 movie）')
-    parser.add_argument('--missing', default='cover_url', help='只处理该字段为空的条目（默认 cover_url）')
+    parser.add_argument('--missing', default='cover_url', help='只处理该字段为空的条目（默认 cover_url；none=不过滤，处理全部）')
     parser.add_argument('--source', default='auto', choices=['auto', 'tmdb', 'bangumi'], help='数据源（默认按类别自动）')
     parser.add_argument('--limit', type=int, default=0, help='最多处理多少条（0=不限）')
     parser.add_argument('--auto', action='store_true', help='自动模式：标题与年份全中的候选直接应用')
@@ -98,18 +126,24 @@ def main():
         print(f'撤回完成 {ok}/{len(entries)}')
         return
 
-    # 找出待处理条目
-    query = '/api/items?page_size=200'
-    if args.category:
-        query += '&category=' + urllib.parse.quote(args.category)
-    if args.missing == 'cover_url':
-        query += '&has_cover=false'
-    st, d = api(args.base, token, query)
-    if st != 200:
-        print(f'列表获取失败: {d}', file=sys.stderr)
-        sys.exit(1)
-    items = d['items']
-    if args.missing != 'cover_url':
+    # 找出待处理条目（API 单页上限 200，大类别要翻页取全）
+    items = []
+    page = 1
+    while True:
+        query = f'/api/items?page_size=200&page={page}'
+        if args.category:
+            query += '&category=' + urllib.parse.quote(args.category)
+        if args.missing == 'cover_url':
+            query += '&has_cover=false'
+        st, d = api(args.base, token, query)
+        if st != 200:
+            print(f'列表获取失败: {d}', file=sys.stderr)
+            sys.exit(1)
+        items.extend(d['items'])
+        if not d['items'] or len(items) >= d.get('total', 0):
+            break
+        page += 1
+    if args.missing not in ('cover_url', 'none'):
         items = [i for i in items if not (i.get(args.missing) or [])]
     if args.limit:
         items = items[: args.limit]
@@ -117,7 +151,8 @@ def main():
         print('没有符合条件（该字段为空）的条目，无事可做')
         return
 
-    print(f'待处理 {len(items)} 条（缺 {args.missing}），模式：{"自动" if args.auto else "交互"}\n')
+    scope = '全部条目' if args.missing == 'none' else f'缺 {args.missing}'
+    print(f'待处理 {len(items)} 条（{scope}），模式：{"自动" if args.auto else "交互"}\n')
     report = {'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'), 'missing': args.missing, 'applied': []}
     applied_count = 0
     ambiguous = 0
@@ -134,14 +169,32 @@ def main():
             time.sleep(args.delay)
             continue
         candidates = d.get('candidates', [])
+        used_query = None
         if not candidates:
-            print(f'{prefix} → 无候选')
-            time.sleep(args.delay)
-            continue
+            variants = title_variants(title)[1:]
+            # 先按条目年份搜变体；再不带年份兜底（库内年份有出入时，带年份搜索会被过滤成零结果）
+            attempts = [(v, False) for v in variants] + [(v, True) for v in [title] + variants]
+            for vq, no_year in attempts:
+                body = {**preview_body, 'query': vq}
+                if no_year:
+                    body['year'] = None
+                st, d = api(args.base, token, '/api/autofill/preview', 'POST', body)
+                if st == 200 and d.get('candidates'):
+                    candidates = d['candidates']
+                    used_query = vq
+                    break
+            if not candidates:
+                print(f'{prefix} → 无候选')
+                time.sleep(args.delay)
+                continue
+            print(f'{prefix} → 经变体「{used_query}」{"（忽略年份）" if no_year else ""}命中 {len(candidates)} 个候选')
 
         chosen = None
         if args.auto:
             exact = [c for c in candidates if c['title'].strip().lower() == title.strip().lower()]
+            if used_query:
+                exact += [c for c in candidates if c['title'].strip().lower() == used_query.strip().lower()]
+            exact = list({c['externalId']: c for c in exact}.values())
             if len(exact) == 1:
                 chosen = exact[0]
             else:
