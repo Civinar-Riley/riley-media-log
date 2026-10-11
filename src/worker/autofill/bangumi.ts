@@ -57,12 +57,16 @@ function bgmHeaders(env: Env): Record<string, string> {
 }
 
 async function bgmGet(env: Env, path: string): Promise<BgmRaw> {
-  const res = await fetch(BGM_BASE + path, { headers: bgmHeaders(env) })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Bangumi 请求失败（${res.status}）：${text.slice(0, 200)}`)
+  // 上游偶发 502/429，自动重试一次
+  let lastError = ''
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 800))
+    const res = await fetch(BGM_BASE + path, { headers: bgmHeaders(env) })
+    if (res.ok) return (await res.json()) as BgmRaw
+    lastError = `${res.status}: ${(await res.text()).slice(0, 150)}`
+    if (res.status !== 502 && res.status !== 503 && res.status !== 429) break
   }
-  return (await res.json()) as BgmRaw
+  throw new Error(`Bangumi 请求失败（${lastError}）`)
 }
 
 async function bgmSearchRaw(env: Env, keyword: string, type?: number): Promise<BgmRaw[]> {
@@ -70,17 +74,19 @@ async function bgmSearchRaw(env: Env, keyword: string, type?: number): Promise<B
   // 注意：filter.type 必须是数字数组（[2]）；裸数字或字符串都会 400，
   // 且 Bangumi 的报错信息（illegal base64）有误导性
   if (type) body.filter = { type: [type] }
-  const res = await fetch(`${BGM_BASE}/v0/search/subjects?limit=8`, {
-    method: 'POST',
-    headers: { ...bgmHeaders(env), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Bangumi 搜索失败（${res.status}）：${text.slice(0, 200)}`)
+  let lastError = ''
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 800))
+    const res = await fetch(`${BGM_BASE}/v0/search/subjects?limit=8`, {
+      method: 'POST',
+      headers: { ...bgmHeaders(env), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) return ((await res.json()) as { data?: BgmRaw[] }).data ?? []
+    lastError = `${res.status}: ${(await res.text()).slice(0, 150)}`
+    if (res.status !== 502 && res.status !== 503 && res.status !== 429) break
   }
-  const data = (await res.json()) as { data?: BgmRaw[] }
-  return data.data ?? []
+  throw new Error(`Bangumi 搜索失败（${lastError}）`)
 }
 
 export function bgmConfigured(_env: Env): boolean {

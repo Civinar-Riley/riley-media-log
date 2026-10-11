@@ -42,6 +42,15 @@ function emptyDefaultFor(column: string): unknown {
   return null
 }
 
+/** 撤回时的「当前值 vs 补全值」比较：数组列解析 JSON，数字列做数值比较 */
+function fieldValueMatches(field: string, current: unknown, after: unknown): boolean {
+  if (['regions', 'tags', 'authors', 'directors', 'actors'].includes(field)) {
+    return JSON.stringify(parseArr(current as string)) === JSON.stringify(parseArr(JSON.stringify(after)))
+  }
+  if (field === 'bgm_id') return Number(current) === Number(after)
+  return sameValue(current as string, after)
+}
+
 function normalizeValue(column: string, value: unknown): unknown {
   if (value === null || value === undefined) return emptyDefaultFor(column)
   return value
@@ -171,7 +180,7 @@ export async function undoAutofill(
   const skipped: string[] = []
   for (const [field, snap] of Object.entries(logFields)) {
     const current = fresh[field as keyof typeof fresh]
-    if (sameValue(current, snap.after)) {
+    if (fieldValueMatches(field, current, snap.after)) {
       restore[field] = normalizeValue(field, snap.before)
     } else {
       skipped.push(field) // 撤回前又被手动改过，跳过以免覆盖
