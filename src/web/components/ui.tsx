@@ -33,10 +33,22 @@ export function CoverImage({
   className?: string
 }) {
   const [failed, setFailed] = useState(false)
-  if (coverUrl && !failed) {
+  let src = coverUrl
+  if (src) {
+    // 被墙的图床走 Worker 图片代理，保证国内浏览器能加载
+    try {
+      const host = new URL(src).hostname
+      if (host === 'image.tmdb.org' || host === 'lain.bgm.tv') {
+        src = '/api/img?u=' + encodeURIComponent(src)
+      }
+    } catch {
+      /* 非 URL 原样使用 */
+    }
+  }
+  if (src && !failed) {
     return (
       <img
-        src={coverUrl}
+        src={src}
         alt={title}
         loading="lazy"
         onError={() => setFailed(true)}
