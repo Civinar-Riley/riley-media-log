@@ -32,14 +32,25 @@ def api(base, token, path, method='GET', body=None):
         base + path,
         method=method,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+            # Cloudflare 会按 TLS/UA 指纹拦 Python 默认请求（1010），带浏览器 UA 可过
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) riley-media-log-backfill',
+        },
     )
     try:
-        r = urllib.request.urlopen(req)
+        r = urllib.request.urlopen(req, timeout=30)
         data = r.read()
         return r.status, (json.loads(data) if data else None)
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b'null')
+        raw = e.read() or b''
+        try:
+            return e.code, json.loads(raw)
+        except Exception:
+            raise RuntimeError(f'HTTP {e.code}: {raw[:150].decode("utf-8", "replace")}')
+    except urllib.error.URLError as e:
+        raise RuntimeError(f'网络错误（国内访问 workers.dev 需代理，可用 --proxy 指定）: {e.reason}')
 
 
 def main():
@@ -53,7 +64,12 @@ def main():
     parser.add_argument('--auto', action='store_true', help='自动模式：标题与年份全中的候选直接应用')
     parser.add_argument('--delay', type=float, default=1.0, help='每条之间的间隔秒数（对外部源友好）')
     parser.add_argument('--undo', metavar='REPORT', help='按回填报告撤回一次批量操作')
+    parser.add_argument('--proxy', default=None, help='HTTP 代理（如 http://127.0.0.1:7897），访问 workers.dev 被墙时使用')
     args = parser.parse_args()
+
+    if args.proxy:
+        proxy = urllib.request.ProxyHandler({'http': args.proxy, 'https': args.proxy})
+        urllib.request.install_opener(urllib.request.build_opener(proxy))
 
     token = args.token
     if not token:
