@@ -5,13 +5,16 @@
     python scripts/backfill.py                          # 交互模式，处理所有缺封面的条目
     python scripts/backfill.py --category movie         # 只处理电影
     python scripts/backfill.py --missing authors        # 只处理缺作者的条目
-    python scripts/backfill.py --auto --limit 50        # 自动模式（标题+年份全中才应用）
+    python scripts/backfill.py --missing none --category movie --auto --overwrite
+                                                        # 全部条目覆盖式回填（overwrite 会替换已有值）
     python scripts/backfill.py --undo data/backfill_report.json   # 撤回一次批量回填
 
 说明：
 - 每次应用在服务端都有快照（autofill_log），网页条目详情里可单独撤回；
   批量撤回用 --undo + 上次生成的报告文件
-- 只填空字段，手填过的内容不会被覆盖
+- 默认只填空字段，手填过的内容不会被覆盖；--overwrite 允许覆盖（配合报告可整批撤回）
+- 自动模式只应用「标题完全一致」或「年份唯一命中」的候选；标题搜不到时会自动尝试
+  变体（去季数序号、去空格、括号内别名、去英文副标题、零零七→007），最后不带年份兜底
 - TMDB 在国内直连不通：打线上站点时本地需挂代理；打本地 dev 时 Worker 出网不受影响
 """
 import argparse
@@ -19,39 +22,11 @@ import json
 import re
 import sys
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
+
+from common import api, fetch_all_items, install_proxy, load_token
 
 BASE = 'http://localhost:5173'
 ALL_FIELDS = ['cover_url', 'year', 'regions', 'tags', 'directors', 'actors', 'authors', 'episode_count', 'external_rating']
-MISSABLE_FIELDS = ['cover_url', 'year', 'regions', 'tags', 'directors', 'actors', 'authors', 'episode_count']
-
-
-def api(base, token, path, method='GET', body=None):
-    req = urllib.request.Request(
-        base + path,
-        method=method,
-        data=json.dumps(body).encode() if body is not None else None,
-        headers={
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token,
-            # Cloudflare 会按 TLS/UA 指纹拦 Python 默认请求（1010），带浏览器 UA 可过
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) riley-media-log-backfill',
-        },
-    )
-    try:
-        r = urllib.request.urlopen(req, timeout=30)
-        data = r.read()
-        return r.status, (json.loads(data) if data else None)
-    except urllib.error.HTTPError as e:
-        raw = e.read() or b''
-        try:
-            return e.code, json.loads(raw)
-        except Exception:
-            raise RuntimeError(f'HTTP {e.code}: {raw[:150].decode("utf-8", "replace")}')
-    except urllib.error.URLError as e:
-        raise RuntimeError(f'网络错误（国内访问 workers.dev 需代理，可用 --proxy 指定）: {e.reason}')
 
 
 def title_variants(title):
@@ -97,16 +72,9 @@ def main():
     parser.add_argument('--proxy', default=None, help='HTTP 代理（如 http://127.0.0.1:7897），访问 workers.dev 被墙时使用')
     args = parser.parse_args()
 
-    if args.proxy:
-        proxy = urllib.request.ProxyHandler({'http': args.proxy, 'https': args.proxy})
-        urllib.request.install_opener(urllib.request.build_opener(proxy))
+    install_proxy(args.proxy)
 
-    token = args.token
-    if not token:
-        try:
-            token = open('.dev.vars', encoding='utf-8').read().split('API_TOKEN=')[1].splitlines()[0].strip()
-        except Exception:
-            pass
+    token = args.token or load_token()
     if not token:
         print('找不到 API_TOKEN：请加 --token 或确认 .dev.vars 存在', file=sys.stderr)
         sys.exit(1)
@@ -127,24 +95,13 @@ def main():
         print(f'撤回完成 {ok}/{len(entries)}')
         return
 
-    # 找出待处理条目（API 单页上限 200，大类别要翻页取全）
-    items = []
-    page = 1
-    while True:
-        query = f'/api/items?page_size=200&page={page}'
-        if args.category:
-            query += '&category=' + urllib.parse.quote(args.category)
-        if args.missing == 'cover_url':
-            query += '&has_cover=false'
-        st, d = api(args.base, token, query)
-        if st != 200:
-            print(f'列表获取失败: {d}', file=sys.stderr)
-            sys.exit(1)
-        items.extend(d['items'])
-        if not d['items'] or len(items) >= d.get('total', 0):
-            break
-        page += 1
-    if args.missing not in ('cover_url', 'none'):
+    # 找出待处理条目（翻页取全；缺字段过滤在本地做）
+    try:
+        items = fetch_all_items(args.base, token, category=args.category)
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
+    if args.missing != 'none':
         items = [i for i in items if not (i.get(args.missing) or [])]
     if args.limit:
         items = items[: args.limit]
