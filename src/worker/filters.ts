@@ -99,20 +99,20 @@ export function buildWhere(raw: ItemFilters): Cond {
 const LIST_COLUMNS =
   'i.*, (SELECT MAX(v.watched_on) FROM viewings v WHERE v.item_id = i.id) AS last_watched'
 
-/** 排序子句（空值恒排后面） */
+/** 排序子句（空值恒排后面；打平时的 id 兜底跟随同方向，保证升降序结果确实不同） */
 function orderClause(sort: ItemFilters['sort'], dir: 'asc' | 'desc'): string {
   const d = dir === 'asc' ? 'ASC' : 'DESC'
   switch (sort) {
     case 'title':
-      return `ORDER BY i.pinyin_initial ${d}, i.pinyin ${d}, i.id ASC`
+      return `ORDER BY i.pinyin_initial ${d}, i.pinyin ${d}, i.id ${d}`
     case 'year':
-      return `ORDER BY CASE WHEN i.year IS NULL THEN 1 ELSE 0 END, i.year ${d}, i.pinyin_initial ASC, i.id ASC`
+      return `ORDER BY CASE WHEN i.year IS NULL THEN 1 ELSE 0 END, i.year ${d}, i.pinyin_initial ASC, i.id ${d}`
     case 'rating':
-      return `ORDER BY CASE WHEN i.rating IS NULL THEN 1 ELSE 0 END, i.rating ${d}, i.id ASC`
+      return `ORDER BY CASE WHEN i.rating IS NULL THEN 1 ELSE 0 END, i.rating ${d}, i.id ${d}`
     case 'watched':
-      return `ORDER BY CASE WHEN lw IS NULL THEN 1 ELSE 0 END, lw ${d}, i.id DESC`
+      return `ORDER BY CASE WHEN last_watched IS NULL THEN 1 ELSE 0 END, last_watched ${d}, i.id ${d}`
     default:
-      return `ORDER BY i.${sort} ${d}, i.id DESC`
+      return `ORDER BY i.${sort} ${d}, i.id ${d}`
   }
 }
 
