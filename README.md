@@ -161,13 +161,15 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 ```text
 ├── migrations/            # D1 表结构迁移
 ├── scripts/
-│   └── import_excel.py    # Excel → SQL 导入脚本（Python）
+│   ├── import_excel.py    # Excel → SQL 导入脚本（Python）
+│   └── qa_sweep.py        # API 回归测试（57 项，本地运行）
 ├── public/                # PWA manifest、图标、Service Worker
 ├── docs/screenshots/      # README 截图
 ├── src/
 │   ├── shared/            # 前后端共享：类型、枚举、筛选参数解析
 │   ├── worker/            # Hono 后端：认证、条目、清单、字段、统计、导出
 │   └── web/               # React 前端：页面、组件、主题系统
+├── 防踩坑.md              # 开发与部署中真实踩过的坑与解法
 ├── wrangler.jsonc         # Cloudflare 配置（Worker + 静态资产 + D1）
 └── vite.config.ts
 ```
@@ -182,6 +184,7 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 | 为什么要密码？ | 部署后在公网可访问，密码是唯一的门锁；纯本地运行同样需要 |
 | 部署要花钱吗？ | Workers 免费额度对单人使用完全够用，D1 免费额度以百万次读计 |
 | 多人能用吗？ | 目前单用户设计（一个密码共用）；数据模型不阻止将来加多用户 |
+| 遇到奇怪的报错怎么办？ | 先翻 [防踩坑.md](./防踩坑.md)：开发与部署中真实踩过的坑（SQL 拼接、SW 缓存、Windows 编码、部署顺序等）都有现象与解法 |
 
 ## 🕘 版本历史
 
