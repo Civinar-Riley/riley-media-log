@@ -67,8 +67,9 @@ async function bgmGet(env: Env, path: string): Promise<BgmRaw> {
 
 async function bgmSearchRaw(env: Env, keyword: string, type?: number): Promise<BgmRaw[]> {
   const body: Record<string, unknown> = { keyword, limit: 8 }
-  // 注意：Bangumi 搜索接口的 filter.type 要求字符串，传数字会 400
-  if (type) body.filter = { type: String(type) }
+  // 注意：filter.type 必须是数字数组（[2]）；裸数字或字符串都会 400，
+  // 且 Bangumi 的报错信息（illegal base64）有误导性
+  if (type) body.filter = { type: [type] }
   const res = await fetch(`${BGM_BASE}/v0/search/subjects?limit=8`, {
     method: 'POST',
     headers: { ...bgmHeaders(env), 'Content-Type': 'application/json' },
