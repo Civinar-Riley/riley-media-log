@@ -114,8 +114,13 @@ export const api = {
     }),
   autofillFields: (body: { item_id: number; source: AutofillSource; external_id: string }) =>
     req<AutofillFieldOptions>('/api/autofill/fields', { method: 'POST', body: JSON.stringify(body) }),
-  autofillApply: (body: { item_id: number; source: AutofillSource; external_id: string; fields: string[] }) =>
-    req<AutofillApplyResult>('/api/autofill/apply', { method: 'POST', body: JSON.stringify(body) }),
+  autofillApply: (body: {
+    item_id: number
+    source: AutofillSource
+    external_id: string
+    fields: string[]
+    overwrite?: boolean
+  }) => req<AutofillApplyResult>('/api/autofill/apply', { method: 'POST', body: JSON.stringify(body) }),
   autofillUndo: (log_id: number) =>
     req<{ restored: string[]; skipped: string[] }>('/api/autofill/undo', {
       method: 'POST',

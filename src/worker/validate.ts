@@ -82,6 +82,8 @@ export const autofillApplySchema = z.object({
   source: autofillSourceSchema,
   external_id: z.string().trim().min(1).max(40),
   fields: z.array(z.string().trim().min(1).max(40)).min(1, '至少选择一个要补全的字段').max(10),
+  /** true 时允许覆盖已有值（默认只填空位） */
+  overwrite: z.boolean().optional(),
 })
 
 export const autofillFieldOptionsSchema = z.object({

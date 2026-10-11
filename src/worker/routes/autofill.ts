@@ -65,7 +65,15 @@ autofillRoutes.post('/apply', async (c) => {
     )
   }
 
-  const result = await applyAutofill(c.env, c.env.DB, data.item_id, data.source, data.external_id, data.fields)
+  const result = await applyAutofill(
+    c.env,
+    c.env.DB,
+    data.item_id,
+    data.source,
+    data.external_id,
+    data.fields,
+    data.overwrite === true
+  )
   if ('error' in result && result.error) {
     const status = result.error.includes('不存在') ? 404 : 400
     return c.json({ ...result, error: result.error }, status)

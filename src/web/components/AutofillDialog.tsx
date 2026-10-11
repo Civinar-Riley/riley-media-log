@@ -63,6 +63,7 @@ export function AutofillDialog({
       setOptions({ available: d.available, filled: d.filled, displayTitle: d.displayTitle })
       const init: Record<string, boolean> = {}
       for (const f of d.available) init[f.key] = true
+      for (const f of d.filled) init[f.key] = false
       setChecked(init)
       setStep('fields')
       setBusy(false)
@@ -72,15 +73,19 @@ export function AutofillDialog({
   }
 
   async function doApply() {
-    if (!picked) return
+    if (!picked || !options) return
     setBusy(true)
     setError('')
     try {
+      const filledKeys = new Set(options.filled.map((f) => f.key))
+      const fields = Object.keys(checked).filter((k) => checked[k])
+      const overwrite = fields.some((k) => filledKeys.has(k))
       const d = await api.autofillApply({
         item_id: item.id,
         source,
         external_id: picked.externalId,
-        fields: Object.keys(checked).filter((k) => checked[k]),
+        fields,
+        overwrite,
       })
       setApplied(Object.keys(d.applied).map((k) => AUTOFILL_FIELD_LABELS[k] ?? k))
       setSkipped(d.skipped)
@@ -127,7 +132,7 @@ export function AutofillDialog({
             {SOURCE_LABEL[s]}
           </button>
         ))}
-        <span className="text-xs text-faint">只填空字段，手填过的不会动</span>
+        <span className="text-xs text-faint">默认只填空位；勾选「覆盖」可替换已有内容（可撤回）</span>
       </div>
 
       {step === 'search' && (
@@ -203,11 +208,23 @@ export function AutofillDialog({
               </label>
             ))}
             {options.filled.map((f) => (
-              <div key={f.key} className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm opacity-55">
-                <input type="checkbox" className="h-4 w-4" disabled checked={false} />
+              <label
+                key={f.key}
+                className="flex cursor-pointer items-center gap-2 rounded-md border border-line px-3 py-2 text-sm transition hover:border-seal/60"
+                title="勾选将覆盖你已填的内容（可撤回）"
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-[var(--seal)]"
+                  checked={Boolean(checked[f.key])}
+                  onChange={(e) => setChecked((prev) => ({ ...prev, [f.key]: e.target.checked }))}
+                />
                 <span className="text-soft">{f.label}</span>
-                <span className="ml-auto text-xs text-faint">已有，跳过</span>
-              </div>
+                <span className="ml-auto max-w-56 truncate text-xs text-faint" title={f.preview}>
+                  {f.preview}
+                </span>
+                <span className="shrink-0 rounded bg-seal/15 px-1.5 py-0.5 text-[11px] text-seal">覆盖</span>
+              </label>
             ))}
           </div>
           <div className="flex items-center justify-end gap-2 border-t border-line pt-3">

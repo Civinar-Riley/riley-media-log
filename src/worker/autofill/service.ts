@@ -66,14 +66,15 @@ export interface AppliedResult {
   logId: number
 }
 
-/** 应用自动补全：只填空位，写快照日志，返回可撤回的 logId */
+/** 应用自动补全：默认只填空位；overwrite 为 true 时允许覆盖已有值（全部有快照可撤回） */
 export async function applyAutofill(
   env: Env,
   db: D1Database,
   itemId: number,
   source: AutofillSource,
   externalId: string,
-  requested: string[]
+  requested: string[],
+  overwrite = false
 ): Promise<AppliedResult | { error: string }> {
   const item = await db.prepare('SELECT * FROM items WHERE id = ?').bind(itemId).first()
   if (!item) return { error: '条目不存在' }
@@ -102,13 +103,14 @@ export async function applyAutofill(
       continue
     }
     const current = item[field as keyof typeof item]
-    if (!isEmptyValue(field, current)) {
-      skipped.push(field) // 已有值，只填空原则
+    const hasValue = !isEmptyValue(field, current)
+    if (hasValue && !overwrite) {
+      skipped.push(field) // 只填空原则：已有值且未开启覆盖
       continue
     }
     const value = normalizeValue(field, provided[field])
     patch[field] = value
-    logFields[field] = { before: normalizeValue(field, null), after: value }
+    logFields[field] = { before: hasValue ? current : normalizeValue(field, null), after: value }
   }
 
   // 外部 ID 留档（tmdb_id / bgm_id）

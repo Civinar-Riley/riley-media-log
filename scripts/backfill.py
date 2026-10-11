@@ -62,6 +62,7 @@ def main():
     parser.add_argument('--source', default='auto', choices=['auto', 'tmdb', 'bangumi'], help='数据源（默认按类别自动）')
     parser.add_argument('--limit', type=int, default=0, help='最多处理多少条（0=不限）')
     parser.add_argument('--auto', action='store_true', help='自动模式：标题与年份全中的候选直接应用')
+    parser.add_argument('--overwrite', action='store_true', help='允许覆盖已有值（默认只填空位；配合报告 --undo 可整批撤回）')
     parser.add_argument('--delay', type=float, default=1.0, help='每条之间的间隔秒数（对外部源友好）')
     parser.add_argument('--undo', metavar='REPORT', help='按回填报告撤回一次批量操作')
     parser.add_argument('--proxy', default=None, help='HTTP 代理（如 http://127.0.0.1:7897），访问 workers.dev 被墙时使用')
@@ -172,6 +173,7 @@ def main():
             'source': d.get('source') or 'tmdb',
             'external_id': chosen['externalId'],
             'fields': ALL_FIELDS,
+            'overwrite': args.overwrite,
         })
         # 注意：preview 的 source 需要透传给 apply；上面 d 在 apply 后被覆盖，重新取一次
         if st == 200:
