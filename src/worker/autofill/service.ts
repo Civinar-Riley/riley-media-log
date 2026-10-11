@@ -119,9 +119,12 @@ export async function applyAutofill(
   }
 
   const now = new Date().toISOString()
+  // 数组列必须序列化成 JSON 字符串再绑定，否则 D1 报 D1_TYPE_ERROR
+  const ARRAY_COLUMNS = new Set(['regions', 'tags', 'authors', 'directors', 'actors'])
   const sets = Object.keys(patch).map((k) => `${k} = ?`)
   sets.push('updated_at = ?')
-  const vals = [...Object.values(patch), now]
+  const vals = Object.entries(patch).map(([k, v]) => (ARRAY_COLUMNS.has(k) ? JSON.stringify(v) : v))
+  vals.push(now)
   await db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, itemId).run()
 
   const logResult = await db
