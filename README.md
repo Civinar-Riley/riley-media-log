@@ -13,7 +13,7 @@
 [![frontend](https://img.shields.io/badge/React-19-blue?style=flat-square)](https://react.dev)
 [![pwa](https://img.shields.io/badge/PWA-ready-9cf?style=flat-square)](#-功能特性)
 
-[项目简介](#-项目简介) · [界面预览](#-界面预览) · [功能特性](#-功能特性) · [安装](#-安装) · [使用指南](#-使用指南) · [仓库结构](#-仓库结构) · [常见问题](#-常见问题) · [版本历史](#-版本历史) · [声明与授权](#-声明与授权) · [致谢](#-致谢)
+[项目简介](#-项目简介) · [界面预览](#-界面预览) · [功能特性](#-功能特性) · [安装](#-安装) · [使用指南](#-使用指南) · [开放接口](#-开放接口) · [仓库结构](#-仓库结构) · [常见问题](#-常见问题) · [版本历史](#-版本历史) · [声明与授权](#-声明与授权) · [致谢](#-致谢)
 
 </div>
 
@@ -57,7 +57,8 @@
 | :--- | :--- |
 | 🎬 六大类别 | 电影 / 剧集 / 动漫 / 综艺 / 小说 / 漫画，小说与漫画各有「完结状态」字段 |
 | 🏷 四种状态 | 想看 / 在看 / 看过 / 弃了，另附自由文本进度（如「看到第 8 集」） |
-| 🌏 多值字段 | 地区、类型标签、主创均为多选，输入时自动补全历史值 |
+| 🌏 多值字段 | 地区、类型标签、作者 / 导演 / 主演均为多选，输入时自动补全历史值；每个类别可配置显示哪些人员字段 |
+| 🪪 人名别名 | 外国导演/主演的英文原名与中文译名可登记「别名 → 主名」，填写自动归一，历史数据一键统一 |
 | 🔁 观看流水 | 每次观看一条记录（日期 + 一句话短评），二刷直接追加 |
 | 🕘 条目动态 | 添加、改状态、改评分、记流水全部自动记入时间线 |
 | 📋 个人清单 | 自由建单，从片单里搜索勾选加入，可整体维护 |
@@ -125,6 +126,33 @@
 | **备份到 Excel** | 片单页右上角下载图标导出当前筛选，设置页导出全部 CSV/JSON |
 | **脚本批量读写** | 用 `API_TOKEN` 走 Bearer 调 `/api/*`，见下方开放接口 |
 | **手机上用** | 浏览器打开站点 → 添加到主屏幕（PWA），底部标签栏切换页面 |
+
+## 🔌 开放接口
+
+所有 `/api/*` 路由既接受登录 cookie，也接受 `Authorization: Bearer <API_TOKEN>` 令牌，方便脚本批量读写：
+
+| 方法与路径 | 说明 |
+| :--- | :--- |
+| `GET /api/items` | 条目列表，支持全部筛选参数（`q`、`category`、`status`、`tags`、`tag_mode=any/all`、`authors`、`actors`、`year_min` 等）与 `sort` / `order` / `page` 分页 |
+| `POST /api/items` | 新建条目（JSON） |
+| `GET /api/items/:id` | 条目详情（含观看流水、所在清单、动态） |
+| `PUT /api/items/:id` | 局部更新条目 |
+| `DELETE /api/items/:id` | 删除条目 |
+| `GET /api/items/random` | 随机抽一条，可带筛选条件 |
+| `POST /api/items/:id/viewings` | 追加观看流水 |
+| `GET /api/lists` · `POST /api/lists` | 清单列表 / 新建清单 |
+| `GET /api/stats` | 统计面板全部数据（含作者 / 导演 / 主演 TOP） |
+| `GET /api/settings` · `PUT /api/settings/categories` | 类别定义读取与整体保存 |
+| `PUT /api/settings/aliases` · `POST /api/settings/aliases/normalize` | 人名别名映射保存 / 历史数据一键归一 |
+| `GET /api/export.csv` · `GET /api/export.json` | 导出（可带筛选参数，只导出筛选结果） |
+| `GET /api/fields/values?field=tags` | 枚举某字段全部取值与计数 |
+| `POST /api/fields/rename?field=tags` | 字段值改名 / 合并（body: `{"from":[...],"to":"..."}`） |
+
+示例：
+
+```bash
+curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/items?status=want&page_size=5"
+```
 
 ## 📁 仓库结构
 

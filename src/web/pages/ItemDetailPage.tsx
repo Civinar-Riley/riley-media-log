@@ -24,6 +24,20 @@ function Meta({ label, value }: { label: string; value?: React.ReactNode }) {
   )
 }
 
+/** 人名行：label + 可点击的筛选 chips */
+function PeopleRow({ label, people, param, modeParam }: { label: string; people: string[]; param: string; modeParam: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="label mr-1">{label}</span>
+      {people.map((p) => (
+        <Link key={p} to={`/?${param}=${encodeURIComponent(p)}&${modeParam}=any`} className="chip">
+          {p}
+        </Link>
+      ))}
+    </div>
+  )
+}
+
 export default function ItemDetailPage() {
   const { id } = useParams()
   const itemId = Number(id)
@@ -136,17 +150,16 @@ export default function ItemDetailPage() {
             <Meta label="更新于" value={fmtDateTime(item.updated_at)} />
           </div>
 
-          {(item.tags.length > 0 || item.creators.length > 0) && (
+          {(item.authors.length > 0 || item.directors.length > 0 || item.actors.length > 0 || item.tags.length > 0) && (
             <div className="card space-y-2.5 p-4">
-              {item.creators.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="label mr-1">主创</span>
-                  {item.creators.map((c) => (
-                    <Link key={c} to={`/?creators=${encodeURIComponent(c)}&creator_mode=any`} className="chip">
-                      {c}
-                    </Link>
-                  ))}
-                </div>
+              {item.directors.length > 0 && (
+                <PeopleRow label="导演" people={item.directors} param="directors" modeParam="director_mode" />
+              )}
+              {item.actors.length > 0 && (
+                <PeopleRow label="主演" people={item.actors} param="actors" modeParam="actor_mode" />
+              )}
+              {item.authors.length > 0 && (
+                <PeopleRow label="作者" people={item.authors} param="authors" modeParam="author_mode" />
               )}
               {item.tags.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">

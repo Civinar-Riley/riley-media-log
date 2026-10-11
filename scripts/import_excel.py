@@ -185,7 +185,7 @@ def main():
             full_py, first_py = pinyin_of(title)
             rows_out.append(
                 f"INSERT INTO items (title, pinyin, pinyin_initial, category, year, season, "
-                f"regions, tags, creators, status, progress, episode_count, rating, cover_url, "
+                f"regions, tags, authors, status, progress, episode_count, rating, cover_url, "
                 f"channel, finish_status, notes, review, tmdb_id, created_at, updated_at) VALUES ("
                 f"{sql_str(title)}, {sql_str(full_py)}, {sql_str(first_py)}, {sql_str(category)}, "
                 f"{year if year is not None else 'NULL'}, {season if season is not None else 'NULL'}, "

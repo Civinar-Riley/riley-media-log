@@ -27,7 +27,9 @@ interface FormState {
   rating: number | null
   regions: string[]
   tags: string[]
-  creators: string[]
+  authors: string[]
+  directors: string[]
+  actors: string[]
   channel: string
   finish_status: FinishStatus | null
   cover_url: string
@@ -47,7 +49,9 @@ const EMPTY: FormState = {
   rating: null,
   regions: [],
   tags: [],
-  creators: [],
+  authors: [],
+  directors: [],
+  actors: [],
   channel: '',
   finish_status: null,
   cover_url: '',
@@ -75,7 +79,9 @@ function toForm(item: Item): FormState {
     rating: item.rating,
     regions: item.regions,
     tags: item.tags,
-    creators: item.creators,
+    authors: item.authors,
+    directors: item.directors,
+    actors: item.actors,
     channel: item.channel,
     finish_status: item.finish_status,
     cover_url: item.cover_url,
@@ -127,7 +133,7 @@ export default function ItemFormPage() {
     enabled: editing,
   })
   const facets = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
-  const { visible: visibleCats, finishOf } = useCategories()
+  const { visible: visibleCats, finishOf, authorOf, directorOf, actorOf } = useCategories()
 
   const [form, setForm] = useState<FormState>(EMPTY)
   const [error, setError] = useState('')
@@ -152,7 +158,9 @@ export default function ItemFormPage() {
         rating: form.rating,
         regions: form.regions,
         tags: form.tags,
-        creators: form.creators,
+        authors: form.authors,
+        directors: form.directors,
+        actors: form.actors,
         channel: form.channel.trim(),
         finish_status: form.finish_status,
         cover_url: form.cover_url.trim(),
@@ -257,15 +265,43 @@ export default function ItemFormPage() {
           </div>
         </div>
 
-        <div>
-          <label className="label mb-1.5 block">主创 / 作者（可多选，可筛选）</label>
-          <TagInput
-            values={form.creators}
-            onChange={(v) => set('creators', v)}
-            suggestions={facets.data?.creators.map(([v]) => v) ?? []}
-            placeholder="如 导演、演员、作者名"
-          />
-        </div>
+        {authorOf(form.category) && (
+          <div>
+            <label className="label mb-1.5 block">作者</label>
+            <TagInput
+              values={form.authors}
+              onChange={(v) => set('authors', v)}
+              suggestions={facets.data?.authors.map(([v]) => v) ?? []}
+              placeholder="作者名，回车添加"
+            />
+          </div>
+        )}
+        {(directorOf(form.category) || actorOf(form.category)) && (
+          <div className="grid gap-5 md:grid-cols-2">
+            {directorOf(form.category) && (
+              <div>
+                <label className="label mb-1.5 block">导演</label>
+                <TagInput
+                  values={form.directors}
+                  onChange={(v) => set('directors', v)}
+                  suggestions={facets.data?.directors.map(([v]) => v) ?? []}
+                  placeholder="导演名"
+                />
+              </div>
+            )}
+            {actorOf(form.category) && (
+              <div>
+                <label className="label mb-1.5 block">主演</label>
+                <TagInput
+                  values={form.actors}
+                  onChange={(v) => set('actors', v)}
+                  suggestions={facets.data?.actors.map(([v]) => v) ?? []}
+                  placeholder="主演名，可多个"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid gap-5 md:grid-cols-2">
           <div>

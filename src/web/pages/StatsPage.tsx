@@ -216,8 +216,14 @@ export default function StatsPage() {
         <ChartCard title="类型标签 TOP 10" hint="点击下钻" delay={240}>
           <TopBar data={stats.by_tag} onPick={(v) => go(`tags=${encodeURIComponent(v)}&tag_mode=any`)} color="var(--seal)" />
         </ChartCard>
-        <ChartCard title="主创排行 TOP 10" hint="出现最多的作者 / 导演 / 演员" delay={280}>
-          <TopBar data={stats.by_creator} onPick={(v) => go(`creators=${encodeURIComponent(v)}&creator_mode=any`)} />
+        <ChartCard title="作者 TOP 10" hint="小说 / 漫画 · 点击下钻" delay={280}>
+          <TopBar data={stats.by_author} onPick={(v) => go(`authors=${encodeURIComponent(v)}&author_mode=any`)} />
+        </ChartCard>
+        <ChartCard title="导演 TOP 10" hint="点击下钻" delay={320}>
+          <TopBar data={stats.by_director} onPick={(v) => go(`directors=${encodeURIComponent(v)}&director_mode=any`)} color="var(--seal)" />
+        </ChartCard>
+        <ChartCard title="主演 TOP 10" hint="点击下钻" delay={360}>
+          <TopBar data={stats.by_actor} onPick={(v) => go(`actors=${encodeURIComponent(v)}&actor_mode=any`)} />
         </ChartCard>
       </div>
     </div>

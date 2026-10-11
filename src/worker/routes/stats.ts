@@ -5,7 +5,7 @@ export const statsRoutes = new Hono<{ Bindings: Env }>()
 
 statsRoutes.get('/stats', async (c) => {
   const year = todayLocal().slice(0, 4)
-  const [kpi, thisYear, byYear, byCategory, byRegion, byTag, byCreator, byRating, wantByMonth] =
+  const [kpi, thisYear, byYear, byCategory, byRegion, byTag, byAuthor, byDirector, byActor, byRating, wantByMonth] =
     await Promise.all([
       c.env.DB.prepare(
         `SELECT COUNT(*) AS total,
@@ -32,7 +32,15 @@ statsRoutes.get('/stats', async (c) => {
          GROUP BY je.value ORDER BY n DESC LIMIT 10`
       ).all(),
       c.env.DB.prepare(
-        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.creators) je
+        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.authors) je
+         GROUP BY je.value ORDER BY n DESC LIMIT 10`
+      ).all(),
+      c.env.DB.prepare(
+        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.directors) je
+         GROUP BY je.value ORDER BY n DESC LIMIT 10`
+      ).all(),
+      c.env.DB.prepare(
+        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.actors) je
          GROUP BY je.value ORDER BY n DESC LIMIT 10`
       ).all(),
       c.env.DB.prepare(
@@ -73,7 +81,9 @@ statsRoutes.get('/stats', async (c) => {
     by_category: byCategory.results,
     by_region: byRegion.results.map((r) => [r.v, r.n] as [string, number]),
     by_tag: byTag.results.map((r) => [r.v, r.n] as [string, number]),
-    by_creator: byCreator.results.map((r) => [r.v, r.n] as [string, number]),
+    by_author: byAuthor.results.map((r) => [r.v, r.n] as [string, number]),
+    by_director: byDirector.results.map((r) => [r.v, r.n] as [string, number]),
+    by_actor: byActor.results.map((r) => [r.v, r.n] as [string, number]),
     by_rating: ratingRows.map((r) => ({ rating: r.rating, count: r.n })),
     unrated,
     want_by_month: wantRows,

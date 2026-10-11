@@ -7,7 +7,9 @@ import { Loading, PageHeader } from '../components/ui'
 const FIELDS = [
   { key: 'tags', name: '类型标签', hint: '改名会应用到所有条目；改成已存在的名字即为合并' },
   { key: 'regions', name: '地区', hint: '同上，适合把「美国 中国香港」这类拆分归一' },
-  { key: 'creators', name: '主创 / 作者', hint: '把同一人的不同写法合并成一个' },
+  { key: 'authors', name: '作者', hint: '小说/漫画的作者；外国作者建议统一用中文译名做主名' },
+  { key: 'directors', name: '导演', hint: '改名合并全局生效，配合别名功能统一译名' },
+  { key: 'actors', name: '主演', hint: '改名合并全局生效，配合别名功能统一译名' },
   { key: 'channel', name: '观看渠道', hint: '单值字段，同样支持改名合并' },
 ] as const
 

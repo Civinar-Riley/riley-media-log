@@ -3,6 +3,7 @@ import { itemCreateSchema, itemUpdateSchema, viewingCreateSchema, readBody } fro
 import { parseFilters, buildListQuery, buildWhere } from '../filters'
 import { mapItem, nowISO, logActivity } from '../db'
 import { toPinyinText, toPinyinInitial } from '../pinyin'
+import { normalizeItemPeople } from './settings'
 import { STATUS_LABELS } from '../../shared/types'
 import type { Status } from '../../shared/types'
 
@@ -13,7 +14,9 @@ const FIELD_LABELS: Record<string, string> = {
   season: '季号',
   regions: '地区',
   tags: '类型标签',
-  creators: '主创',
+  authors: '作者',
+  directors: '导演',
+  actors: '主演',
   progress: '进度',
   episode_count: '总集数',
   cover_url: '封面',
@@ -25,7 +28,7 @@ const FIELD_LABELS: Record<string, string> = {
 }
 
 /** 值为数组的列在写入时需序列化 */
-const ARRAY_COLUMNS = new Set(['regions', 'tags', 'creators'])
+const ARRAY_COLUMNS = new Set(['regions', 'tags', 'authors', 'directors', 'actors'])
 
 function pageNum(v: string | undefined): number | undefined {
   if (v === undefined || v === '') return undefined
@@ -69,13 +72,14 @@ itemsRoutes.get('/random', async (c) => {
 itemsRoutes.post('/', async (c) => {
   const data = await readBody(c, itemCreateSchema)
   if (data instanceof Response) return data
+  await normalizeItemPeople(c.env.DB, data)
   const now = nowISO()
   const row = await c.env.DB.prepare(
     `INSERT INTO items
-       (title, pinyin, pinyin_initial, category, year, season, regions, tags, creators, status,
-        progress, episode_count, rating, cover_url, channel, finish_status, notes, review, tmdb_id,
+       (title, pinyin, pinyin_initial, category, year, season, regions, tags, authors, directors, actors,
+        status, progress, episode_count, rating, cover_url, channel, finish_status, notes, review, tmdb_id,
         created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      RETURNING *`
   )
     .bind(
@@ -87,7 +91,9 @@ itemsRoutes.post('/', async (c) => {
       data.season,
       JSON.stringify(data.regions),
       JSON.stringify(data.tags),
-      JSON.stringify(data.creators),
+      JSON.stringify(data.authors),
+      JSON.stringify(data.directors),
+      JSON.stringify(data.actors),
       data.status,
       data.progress,
       data.episode_count,
@@ -144,6 +150,7 @@ itemsRoutes.put('/:id', async (c) => {
 
   const data = await readBody(c, itemUpdateSchema)
   if (data instanceof Response) return data
+  await normalizeItemPeople(c.env.DB, data)
   const keys = Object.keys(data) as (keyof typeof data)[]
   if (!keys.length) return c.json(mapItem(old))
 

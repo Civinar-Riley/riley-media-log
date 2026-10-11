@@ -99,7 +99,37 @@ function CategoryManager() {
                 patchAt(i, { finish: !c.finish })
               }}
             >
-              完结状态
+              完结
+            </button>
+            <button
+              className={`chip ${c.author ? 'chip-on' : ''}`}
+              title="该类别是否使用「作者」字段"
+              onClick={() => {
+                setDraft(cats)
+                patchAt(i, { author: !c.author })
+              }}
+            >
+              作者
+            </button>
+            <button
+              className={`chip ${c.director ? 'chip-on' : ''}`}
+              title="该类别是否使用「导演」字段"
+              onClick={() => {
+                setDraft(cats)
+                patchAt(i, { director: !c.director })
+              }}
+            >
+              导演
+            </button>
+            <button
+              className={`chip ${c.actor ? 'chip-on' : ''}`}
+              title="该类别是否使用「主演」字段"
+              onClick={() => {
+                setDraft(cats)
+                patchAt(i, { actor: !c.actor })
+              }}
+            >
+              主演
             </button>
             <button
               className={`chip ${c.hidden ? 'chip-on' : ''}`}
@@ -156,6 +186,142 @@ function CategoryManager() {
   )
 }
 
+/** 人名别名管理：别名 → 主名，保存条目时自动归一 */
+function AliasManager() {
+  const qc = useQueryClient()
+  const settingsQ = useQuery({ queryKey: ['settings'], queryFn: api.getSettings, staleTime: 5 * 60_000 })
+  const facetsQ = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
+  const aliases = settingsQ.data?.aliases ?? {}
+  const [draft, setDraft] = useState<Record<string, string> | null>(null)
+  const [variant, setVariant] = useState('')
+  const [canonical, setCanonical] = useState('')
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const cur = draft ?? aliases
+  const dirty = draft !== null
+  const entries = Object.entries(cur).sort((a, b) => a[1].localeCompare(b[1], 'zh') || a[0].localeCompare(b[0], 'zh'))
+
+  const nameSuggestions = useMemo(() => {
+    const f = facetsQ.data
+    return [...(f?.authors ?? []), ...(f?.directors ?? []), ...(f?.actors ?? [])].map(([v]) => v)
+  }, [facetsQ.data])
+
+  const save = useMutation({
+    mutationFn: () => api.saveAliases(cur),
+    onSuccess: () => {
+      setDraft(null)
+      setError('')
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : '保存失败'),
+  })
+
+  const normalize = useMutation({
+    mutationFn: api.normalizePeople,
+    onSuccess: (r) => {
+      setNotice(`已归一 ${r.updated} 个条目`)
+      qc.invalidateQueries({ queryKey: ['items'] })
+      qc.invalidateQueries({ queryKey: ['facets'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : '归一失败'),
+  })
+
+  function add() {
+    const a = variant.trim()
+    const c = canonical.trim()
+    if (!a || !c) return
+    setDraft({ ...cur, [a]: c })
+    setVariant('')
+    setCanonical('')
+    setNotice('')
+  }
+
+  return (
+    <section className="card p-5">
+      <h2 className="serif mb-1 font-medium text-ink">人名别名</h2>
+      <p className="mb-4 text-xs text-faint">
+        外国导演/主演常有英文原名和中文译名。登记「别名 → 主名」后，填写别名会自动转成主名，筛选统计都算同一个人。建议主名用中文译名。
+      </p>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          className="input h-8 w-44"
+          placeholder="别名，如 Christopher Nolan"
+          value={variant}
+          onChange={(e) => setVariant(e.target.value)}
+        />
+        <span className="text-faint">→</span>
+        <input
+          className="input h-8 w-44"
+          list="alias-canonical-names"
+          placeholder="主名，如 克里斯托弗·诺兰"
+          value={canonical}
+          onChange={(e) => setCanonical(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+        />
+        <datalist id="alias-canonical-names">
+          {nameSuggestions.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
+        <button className="btn h-8" onClick={add} disabled={!variant.trim() || !canonical.trim()}>
+          <Plus className="h-3.5 w-3.5" />
+          登记
+        </button>
+        <span className="text-xs text-faint">共 {entries.length} 条</span>
+      </div>
+
+      {entries.length > 0 && (
+        <ul className="mb-3 grid gap-1.5 sm:grid-cols-2">
+          {entries.map(([a, c]) => (
+            <li key={a} className="flex items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-sm">
+              <span className="truncate text-faint">{a}</span>
+              <span className="text-faint">→</span>
+              <span className="truncate text-ink">{c}</span>
+              <button
+                className="btn btn-danger ml-auto h-6 px-1.5"
+                aria-label={`删除别名 ${a}`}
+                onClick={() => {
+                  const next = { ...cur }
+                  delete next[a]
+                  setDraft(next)
+                }}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {dirty && (
+          <>
+            <span className="text-xs text-faint">有未保存的修改</span>
+            <button className="btn h-8" onClick={() => { setDraft(null); setError('') }}>
+              放弃
+            </button>
+            <button className="btn btn-primary h-8" disabled={save.isPending} onClick={() => save.mutate()}>
+              {save.isPending ? '保存中…' : '保存别名'}
+            </button>
+          </>
+        )}
+        <button
+          className="btn h-8 sm:ml-auto"
+          disabled={!entries.length || normalize.isPending}
+          title="把已有条目里的人名按别名表改写为主名"
+          onClick={() => normalize.mutate()}
+        >
+          {normalize.isPending ? '归一中…' : '一键归一历史数据'}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      {notice && <p className="mt-2 text-sm text-brand">{notice}</p>}
+    </section>
+  )
+}
+
 export default function SettingsPage() {
   const { theme, followSystem, setTheme, setFollowSystem } = useTheme()
   const { logout, hasApiToken } = useAuth()
@@ -201,6 +367,9 @@ export default function SettingsPage() {
 
       {/* 类别管理 */}
       <CategoryManager />
+
+      {/* 人名别名 */}
+      <AliasManager />
 
       {/* 导出 */}
       <section className="card p-5">

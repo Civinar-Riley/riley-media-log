@@ -37,14 +37,16 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export function filtersToQuery(f: ItemFilters): string {
   const sp = new URLSearchParams()
   if (f.q) sp.set('q', f.q)
-  const listKeys = ['category', 'status', 'regions', 'tags', 'creators', 'finish_status'] as const
+  const listKeys = ['category', 'status', 'regions', 'tags', 'authors', 'directors', 'actors', 'finish_status'] as const
   for (const k of listKeys) {
     const v = f[k]
     if (v && v.length) sp.set(k, v.join(','))
   }
   if (f.tag_mode && f.tags?.length) sp.set('tag_mode', f.tag_mode)
   if (f.region_mode && f.regions?.length) sp.set('region_mode', f.region_mode)
-  if (f.creator_mode && f.creators?.length) sp.set('creator_mode', f.creator_mode)
+  if (f.author_mode && f.authors?.length) sp.set('author_mode', f.author_mode)
+  if (f.director_mode && f.directors?.length) sp.set('director_mode', f.director_mode)
+  if (f.actor_mode && f.actors?.length) sp.set('actor_mode', f.actor_mode)
   const scalarKeys = [
     'year_min', 'year_max', 'rating_min', 'rating_max',
     'has_cover', 'has_review', 'channel', 'list_id', 'watched_from', 'watched_to', 'sort', 'order',
@@ -98,12 +100,18 @@ export const api = {
     req<{ ok: boolean }>(`/api/lists/${id}/items/${itemId}`, { method: 'DELETE' }),
 
   facets: () => req<Facets>('/api/fields/facets'),
-  getSettings: () => req<{ categories: CategoryDef[] }>('/api/settings'),
+  getSettings: () => req<{ categories: CategoryDef[]; aliases: Record<string, string> }>('/api/settings'),
   saveCategories: (categories: CategoryDef[]) =>
     req<{ categories: CategoryDef[] }>('/api/settings/categories', {
       method: 'PUT',
       body: JSON.stringify({ categories }),
     }),
+  saveAliases: (aliases: Record<string, string>) =>
+    req<{ aliases: Record<string, string> }>('/api/settings/aliases', {
+      method: 'PUT',
+      body: JSON.stringify({ aliases }),
+    }),
+  normalizePeople: () => req<{ updated: number }>('/api/settings/aliases/normalize', { method: 'POST' }),
   fieldValues: (field: string) => req<[string, number][]>(`/api/fields/values?field=${field}`),
   renameField: (field: string, from: string | string[], to: string) =>
     req<{ updated: number }>(`/api/fields/rename?field=${field}`, {

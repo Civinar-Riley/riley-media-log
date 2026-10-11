@@ -3,14 +3,14 @@ import { fieldRenameSchema, readBody } from '../validate'
 import { parseArr } from '../db'
 import type { FieldName } from '../../shared/types'
 
-const FIELDS: FieldName[] = ['tags', 'regions', 'creators', 'channel']
-const ARRAY_FIELDS = new Set<FieldName>(['tags', 'regions', 'creators'])
+const FIELDS: FieldName[] = ['tags', 'regions', 'authors', 'directors', 'actors', 'channel']
+const ARRAY_FIELDS = new Set<FieldName>(['tags', 'regions', 'authors', 'directors', 'actors'])
 
 export const fieldsRoutes = new Hono<{ Bindings: Env }>()
 
-/** 筛选栏一次拉齐：类别与四个字段的全部取值 + 年份范围 */
+/** 筛选栏一次拉齐：类别与各字段的全部取值 + 年份范围 */
 fieldsRoutes.get('/facets', async (c) => {
-  const [cats, tags, regions, creators, channels, years] = await Promise.all([
+  const [cats, tags, regions, authors, directors, actors, channels, years] = await Promise.all([
     c.env.DB.prepare(`SELECT category AS v, COUNT(*) AS n FROM items GROUP BY category`).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
       `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.tags) je
@@ -21,7 +21,15 @@ fieldsRoutes.get('/facets', async (c) => {
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
     ).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
-      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.creators) je
+      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.authors) je
+       GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
+    ).all<{ v: string; n: number }>(),
+    c.env.DB.prepare(
+      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.directors) je
+       GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
+    ).all<{ v: string; n: number }>(),
+    c.env.DB.prepare(
+      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.actors) je
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
     ).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
@@ -34,7 +42,9 @@ fieldsRoutes.get('/facets', async (c) => {
     categories: cats.results.map((r) => [r.v, r.n] as [string, number]),
     tags: tags.results.map((r) => [r.v, r.n] as [string, number]),
     regions: regions.results.map((r) => [r.v, r.n] as [string, number]),
-    creators: creators.results.map((r) => [r.v, r.n] as [string, number]),
+    authors: authors.results.map((r) => [r.v, r.n] as [string, number]),
+    directors: directors.results.map((r) => [r.v, r.n] as [string, number]),
+    actors: actors.results.map((r) => [r.v, r.n] as [string, number]),
     channels: channels.results.map((r) => [r.v, r.n] as [string, number]),
     year_min: years?.y_min ?? null,
     year_max: years?.y_max ?? null,

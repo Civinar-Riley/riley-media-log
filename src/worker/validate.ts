@@ -14,7 +14,9 @@ export const itemCreateSchema = z.object({
   season: z.number().int().min(1).max(200).nullish().transform((v) => v ?? null),
   regions: strArr,
   tags: strArr,
-  creators: strArr,
+  authors: strArr,
+  directors: strArr,
+  actors: strArr,
   status: z.enum(STATUSES).default('want'),
   progress: z.string().trim().max(500).default(''),
   episode_count: z.number().int().min(1).max(100000).nullish().transform((v) => v ?? null),
@@ -61,6 +63,12 @@ export const fieldRenameSchema = z.object({
 
 export const loginSchema = z.object({ password: z.string().min(1).max(200) })
 
+export const aliasesSchema = z.object({
+  aliases: z
+    .record(z.string().trim().min(1).max(60), z.string().trim().min(1).max(60))
+    .refine((obj) => Object.keys(obj).length <= 500, '别名太多（上限 500 条）'),
+})
+
 const categoryDefSchema = z.object({
   id: z
     .string()
@@ -71,6 +79,9 @@ const categoryDefSchema = z.object({
   label: z.string().trim().min(1, '类别名不能为空').max(20),
   hidden: z.boolean().optional(),
   finish: z.boolean().optional(),
+  author: z.boolean().optional(),
+  director: z.boolean().optional(),
+  actor: z.boolean().optional(),
 })
 
 export const categoriesSchema = z

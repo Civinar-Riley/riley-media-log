@@ -36,7 +36,9 @@ export function buildWhere(raw: ItemFilters): Cond {
     status: raw.status ?? [],
     regions: raw.regions ?? [],
     tags: raw.tags ?? [],
-    creators: raw.creators ?? [],
+    authors: raw.authors ?? [],
+    directors: raw.directors ?? [],
+    actors: raw.actors ?? [],
     finish_status: raw.finish_status ?? [],
   }
   const conds: Cond[] = []
@@ -65,7 +67,9 @@ export function buildWhere(raw: ItemFilters): Cond {
     })
   if (f.regions.length) conds.push(jsonFieldCond('regions', f.regions, f.region_mode ?? 'any'))
   if (f.tags.length) conds.push(jsonFieldCond('tags', f.tags, f.tag_mode ?? 'any'))
-  if (f.creators.length) conds.push(jsonFieldCond('creators', f.creators, f.creator_mode ?? 'any'))
+  if (f.authors.length) conds.push(jsonFieldCond('authors', f.authors, f.author_mode ?? 'any'))
+  if (f.directors.length) conds.push(jsonFieldCond('directors', f.directors, f.director_mode ?? 'any'))
+  if (f.actors.length) conds.push(jsonFieldCond('actors', f.actors, f.actor_mode ?? 'any'))
 
   if (f.list_id !== undefined) {
     conds.push({

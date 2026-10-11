@@ -22,15 +22,21 @@ export interface CategoryDef {
   hidden?: boolean
   /** 该类别是否显示「完结状态」字段（如小说/漫画的连载状态） */
   finish?: boolean
+  /** 该类别是否显示「作者」字段 */
+  author?: boolean
+  /** 该类别是否显示「导演」字段 */
+  director?: boolean
+  /** 该类别是否显示「主演」字段 */
+  actor?: boolean
 }
 
 export const DEFAULT_CATEGORIES: CategoryDef[] = [
-  { id: 'movie', label: '电影' },
-  { id: 'series', label: '剧集' },
-  { id: 'anime', label: '动漫' },
-  { id: 'variety', label: '综艺' },
-  { id: 'novel', label: '小说', finish: true },
-  { id: 'manga', label: '漫画', finish: true },
+  { id: 'movie', label: '电影', director: true, actor: true },
+  { id: 'series', label: '剧集', director: true, actor: true },
+  { id: 'anime', label: '动漫', director: true, actor: true },
+  { id: 'variety', label: '综艺', director: true, actor: true },
+  { id: 'novel', label: '小说', finish: true, author: true },
+  { id: 'manga', label: '漫画', finish: true, author: true },
 ]
 
 export const STATUSES = ['want', 'watching', 'done', 'dropped'] as const
@@ -78,7 +84,9 @@ export interface Item {
   season: number | null
   regions: string[]
   tags: string[]
-  creators: string[]
+  authors: string[]
+  directors: string[]
+  actors: string[]
   status: Status
   progress: string
   episode_count: number | null
@@ -131,14 +139,16 @@ export interface PagedItems {
 }
 
 /** 多值字段的可选值与计数 */
-export type FieldName = 'tags' | 'regions' | 'creators' | 'channel'
+export type FieldName = 'tags' | 'regions' | 'authors' | 'directors' | 'actors' | 'channel'
 export type ValueCount = [string, number]
 
 export interface Facets {
   categories: ValueCount[]
   tags: ValueCount[]
   regions: ValueCount[]
-  creators: ValueCount[]
+  authors: ValueCount[]
+  directors: ValueCount[]
+  actors: ValueCount[]
   channels: ValueCount[]
   year_min: number | null
   year_max: number | null
@@ -157,7 +167,9 @@ export interface Stats {
   by_category: { key: string; count: number }[]
   by_region: ValueCount[]
   by_tag: ValueCount[]
-  by_creator: ValueCount[]
+  by_author: ValueCount[]
+  by_director: ValueCount[]
+  by_actor: ValueCount[]
   by_rating: { rating: number; count: number }[]
   unrated: number
   want_by_month: { month: string; count: number; cumulative: number }[]
@@ -172,10 +184,14 @@ export interface ItemFilters {
   year_max?: number
   regions?: string[]
   tags?: string[]
-  creators?: string[]
+  authors?: string[]
+  directors?: string[]
+  actors?: string[]
   tag_mode?: 'any' | 'all'
   region_mode?: 'any' | 'all'
-  creator_mode?: 'any' | 'all'
+  author_mode?: 'any' | 'all'
+  director_mode?: 'any' | 'all'
+  actor_mode?: 'any' | 'all'
   rating_min?: number
   rating_max?: number
   has_cover?: boolean

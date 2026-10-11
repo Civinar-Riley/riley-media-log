@@ -97,12 +97,6 @@ function FilterBar({
   onChange: (patch: Partial<ItemFilters>) => void
   onClear: () => void
 }) {
-  const [showAllCreators, setShowAllCreators] = useState(false)
-  const creatorOptions = facets
-    ? facets.creators.map(([v]) => v)
-    : []
-  const visibleCreators = showAllCreators ? creatorOptions : creatorOptions.slice(0, 18)
-
   const triState = (value: boolean | undefined, on: () => Partial<ItemFilters>, off: () => Partial<ItemFilters>) => (
     <div className="flex gap-1.5">
       <button className={`chip ${value === undefined ? 'chip-on' : ''}`} onClick={() => value !== undefined && onChange(off())}>
@@ -217,20 +211,33 @@ function FilterBar({
         />
       </div>
       <div>
-        <p className="label mb-1.5">
-          主创 / 作者
-          {creatorOptions.length > 18 && (
-            <button className="ml-2 text-brand hover:underline" onClick={() => setShowAllCreators((v) => !v)}>
-              {showAllCreators ? '收起' : `展开全部（${creatorOptions.length}）`}
-            </button>
-          )}
-        </p>
+        <p className="label mb-1.5">作者</p>
         <ChipRow
-          options={visibleCreators}
-          selected={filters.creators ?? []}
-          onToggle={(v) => onChange({ creators: toggleIn(filters.creators ?? [], v) })}
-          mode={filters.creator_mode}
-          onMode={(m) => onChange({ creator_mode: m })}
+          options={facets?.authors.map(([v]) => v) ?? []}
+          selected={filters.authors ?? []}
+          onToggle={(v) => onChange({ authors: toggleIn(filters.authors ?? [], v) })}
+          mode={filters.author_mode}
+          onMode={(m) => onChange({ author_mode: m })}
+        />
+      </div>
+      <div>
+        <p className="label mb-1.5">导演</p>
+        <ChipRow
+          options={facets?.directors.map(([v]) => v) ?? []}
+          selected={filters.directors ?? []}
+          onToggle={(v) => onChange({ directors: toggleIn(filters.directors ?? [], v) })}
+          mode={filters.director_mode}
+          onMode={(m) => onChange({ director_mode: m })}
+        />
+      </div>
+      <div>
+        <p className="label mb-1.5">主演</p>
+        <ChipRow
+          options={facets?.actors.map(([v]) => v) ?? []}
+          selected={filters.actors ?? []}
+          onToggle={(v) => onChange({ actors: toggleIn(filters.actors ?? [], v) })}
+          mode={filters.actor_mode}
+          onMode={(m) => onChange({ actor_mode: m })}
         />
       </div>
 
@@ -381,7 +388,9 @@ export default function ListPage() {
     (filters.status?.length ?? 0) > 0 ||
     (filters.regions?.length ?? 0) > 0 ||
     (filters.tags?.length ?? 0) > 0 ||
-    (filters.creators?.length ?? 0) > 0 ||
+    (filters.authors?.length ?? 0) > 0 ||
+    (filters.directors?.length ?? 0) > 0 ||
+    (filters.actors?.length ?? 0) > 0 ||
     (filters.finish_status?.length ?? 0) > 0 ||
     filters.year_min !== undefined ||
     filters.year_max !== undefined ||

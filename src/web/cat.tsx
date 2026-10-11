@@ -13,6 +13,9 @@ interface CatCtx {
   all: CategoryDef[]
   labelOf: (id: string) => string
   finishOf: (id: string) => boolean
+  authorOf: (id: string) => boolean
+  directorOf: (id: string) => boolean
+  actorOf: (id: string) => boolean
 }
 
 const Ctx = createContext<CatCtx | null>(null)
@@ -28,6 +31,9 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
     all,
     labelOf: (id) => labelMap.get(id) ?? id,
     finishOf: (id) => Boolean(all.find((c) => c.id === id)?.finish),
+    authorOf: (id) => Boolean(all.find((c) => c.id === id)?.author),
+    directorOf: (id) => Boolean(all.find((c) => c.id === id)?.director),
+    actorOf: (id) => Boolean(all.find((c) => c.id === id)?.actor),
   }
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
