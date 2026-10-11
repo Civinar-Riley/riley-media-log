@@ -1,0 +1,21 @@
+# 依赖与构建
+node_modules/
+dist/
+
+# Cloudflare 本地状态与密钥（绝不入库）
+.wrangler/
+.dev.vars
+
+# 个人数据：Excel 记录表与生成的导入 SQL，绝不入库
+*.xlsm
+*.xlsx
+*.xls
+data/
+
+# 生成文件
+worker-configuration.d.ts
+
+# 杂项
+.DS_Store
+*.local
+npm-debug.log*

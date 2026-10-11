@@ -1,0 +1,17 @@
+{
+  "name": "书影集 · 我的书影音记录",
+  "short_name": "书影集",
+  "description": "个人的电影、剧集、动漫、综艺、小说、漫画记录工具",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f4ee",
+  "theme_color": "#5b6e58",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

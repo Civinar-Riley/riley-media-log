@@ -1,0 +1,40 @@
+{
+  "name": "riley-media-log",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run cf-typegen && tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit && vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "check": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "cf-typegen": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply riley-media-log --local",
+    "db:migrate:remote": "wrangler d1 migrations apply riley-media-log --remote",
+    "import:excel": "python scripts/import_excel.py",
+    "import:local": "npm run import:excel && wrangler d1 execute riley-media-log --local --file data/import.sql"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.104.1",
+    "hono": "^4.13.13",
+    "lucide-react": "^1.55.0",
+    "pinyin-pro": "^3.29.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
+    "recharts": "^3.10.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.63.1",
+    "@cloudflare/workers-types": "^5.20261011.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "wrangler": "^4.149.0"
+  }
+}
