@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { itemCreateSchema, itemUpdateSchema, viewingCreateSchema, readBody } from '../validate'
 import { parseFilters, buildListQuery, buildWhere } from '../filters'
-import { mapItem, nowISO, logActivity } from '../db'
+import { mapItem, nowISO, logActivity, parseArr } from '../db'
 import { toPinyinText, toPinyinInitial } from '../pinyin'
 import { normalizeItemPeople } from './settings'
 import { STATUS_LABELS } from '../../shared/types'
@@ -190,9 +190,14 @@ itemsRoutes.put('/:id', async (c) => {
       `评分：${old.rating ?? '未评'} → ${data.rating ?? '未评'}`
     )
   }
-  const others = keys.filter(
-    (k) => k !== 'status' && k !== 'rating' && data[k] !== old[k as keyof typeof old]
-  )
+  const others = keys.filter((k) => {
+    if (k === 'status' || k === 'rating') return false
+    const next = data[k]
+    const prev = old[k as keyof typeof old]
+    // 数组按内容比较（旧值在库里是 JSON 字符串），避免「没改也记一笔动态」的噪音
+    if (Array.isArray(next)) return JSON.stringify(next) !== JSON.stringify(parseArr(prev as string))
+    return next !== prev
+  })
   if (others.length) {
     await logActivity(
       c.env.DB,

@@ -22,6 +22,21 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api')) return // API 不缓存
   if (event.request.method !== 'GET') return
 
+  // 页面导航：网络优先（保证重新部署后能拿到新版），离线时回退缓存
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          const copy = res.clone()
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy))
+          return res
+        })
+        .catch(() => caches.match(event.request).then((hit) => hit || caches.match('/')))
+    )
+    return
+  }
+
+  // 静态资源（带哈希文件名，内容不变）：缓存优先
   event.respondWith(
     caches.match(event.request).then(
       (hit) =>

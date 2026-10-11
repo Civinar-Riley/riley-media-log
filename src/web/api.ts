@@ -28,6 +28,10 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const isJson = res.headers.get('content-type')?.includes('application/json')
   const data = isJson ? await res.json().catch(() => null) : null
   if (!res.ok) {
+    // 会话过期：除登录/状态接口外的 401 直接回登录页，避免页面到处报「未登录」
+    if (res.status === 401 && !path.startsWith('/api/auth/')) {
+      window.location.href = '/login'
+    }
     throw new ApiError(res.status, (data as { error?: string })?.error ?? `请求失败（${res.status}）`)
   }
   return data as T

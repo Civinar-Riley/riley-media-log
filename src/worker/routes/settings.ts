@@ -71,16 +71,16 @@ function applyAliases(names: string[] | undefined, aliases: Record<string, strin
   return out
 }
 
-/** 保存条目前归一其人名字段 */
+/** 保存条目前归一其人名字段（只处理提交里实际出现的键，避免给局部更新补 undefined 键） */
 export async function normalizeItemPeople(
   db: D1Database,
   data: { authors?: string[]; directors?: string[]; actors?: string[] }
 ): Promise<void> {
   const aliases = await readAliases(db)
   if (!Object.keys(aliases).length) return
-  data.authors = applyAliases(data.authors, aliases)
-  data.directors = applyAliases(data.directors, aliases)
-  data.actors = applyAliases(data.actors, aliases)
+  if (data.authors !== undefined) data.authors = applyAliases(data.authors, aliases)
+  if (data.directors !== undefined) data.directors = applyAliases(data.directors, aliases)
+  if (data.actors !== undefined) data.actors = applyAliases(data.actors, aliases)
 }
 
 export const settingsRoutes = new Hono<{ Bindings: Env }>()

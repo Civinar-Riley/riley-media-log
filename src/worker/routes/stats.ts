@@ -43,18 +43,16 @@ statsRoutes.get('/stats', async (c) => {
         `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.actors) je
          GROUP BY je.value ORDER BY n DESC LIMIT 10`
       ).all(),
-      c.env.DB.prepare(
-        `SELECT COALESCE(rating, 0) AS rating, COUNT(*) AS n FROM items
-         WHERE rating IS NOT NULL GROUP BY rating`
-      ).all(),
+      c.env.DB.prepare(`SELECT rating, COUNT(*) AS n FROM items GROUP BY rating`).all(),
       c.env.DB.prepare(
         `SELECT strftime('%Y-%m', created_at) AS m, COUNT(*) AS n FROM items
          WHERE status = 'want' GROUP BY m ORDER BY m`
       ).all(),
     ])
 
-  const ratingRows = (byRating.results as { rating: number; n: number }[]).filter((r) => r.rating > 0)
-  const unrated = (byRating.results as { rating: number; n: number }[]).find((r) => r.rating === 0)?.n ?? 0
+  const ratingRowsAll = byRating.results as { rating: number | null; n: number }[]
+  const ratingRows = ratingRowsAll.filter((r) => r.rating !== null) as { rating: number; n: number }[]
+  const unrated = ratingRowsAll.find((r) => r.rating === null)?.n ?? 0
 
   let cum = 0
   const wantRows = (wantByMonth.results as { m: string; n: number }[]).map((r) => {
