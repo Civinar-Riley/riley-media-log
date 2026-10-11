@@ -63,6 +63,11 @@ export const fieldRenameSchema = z.object({
 
 export const loginSchema = z.object({ password: z.string().min(1).max(200) })
 
+export const changePasswordSchema = z.object({
+  current: z.string().min(1, '请输入当前密码').max(200),
+  next: z.string().min(6, '新密码至少 6 位').max(100),
+})
+
 export const aliasesSchema = z.object({
   aliases: z
     .record(z.string().trim().min(1).max(60), z.string().trim().min(1).max(60))

@@ -322,6 +322,97 @@ function AliasManager() {
   )
 }
 
+/** 登录密码修改：应用内密码存 D1 哈希，Cloudflare 应急密钥保留为恢复通道 */
+function PasswordChanger() {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+  const [ok, setOk] = useState('')
+
+  const change = useMutation({
+    mutationFn: () => api.changePassword(current, next),
+    onSuccess: () => {
+      setOk('密码已更新。Cloudflare 后台的应急密钥（AUTH_PASSWORD）仍可作为找回入口。')
+      setError('')
+      setCurrent('')
+      setNext('')
+      setConfirm('')
+    },
+    onError: (e) => {
+      setOk('')
+      setError(e instanceof Error ? e.message : '修改失败')
+    },
+  })
+
+  function submit() {
+    setOk('')
+    if (next.length < 6) {
+      setError('新密码至少 6 位')
+      return
+    }
+    if (next !== confirm) {
+      setError('两次输入的新密码不一致')
+      return
+    }
+    setError('')
+    change.mutate()
+  }
+
+  return (
+    <section className="card p-5">
+      <h2 className="serif mb-1 font-medium text-ink">登录密码</h2>
+      <p className="mb-4 text-xs text-faint">
+        修改后立即生效，已登录的设备不受影响。忘记密码时，Cloudflare 后台设置的应急密钥（AUTH_PASSWORD）仍可登录。
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label className="label mb-1.5 block">当前密码</label>
+          <input
+            type="password"
+            className="input"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            placeholder="当前密码"
+          />
+        </div>
+        <div>
+          <label className="label mb-1.5 block">新密码</label>
+          <input
+            type="password"
+            className="input"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            placeholder="至少 6 位"
+          />
+        </div>
+        <div>
+          <label className="label mb-1.5 block">确认新密码</label>
+          <input
+            type="password"
+            className="input"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            placeholder="再输一遍"
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          className="btn btn-primary"
+          disabled={!current || !next || !confirm || change.isPending}
+          onClick={submit}
+        >
+          {change.isPending ? '修改中…' : '修改密码'}
+        </button>
+        {error && <span className="text-sm text-danger">{error}</span>}
+        {ok && <span className="text-sm text-brand">{ok}</span>}
+      </div>
+    </section>
+  )
+}
+
 export default function SettingsPage() {
   const { theme, followSystem, setTheme, setFollowSystem } = useTheme()
   const { logout, hasApiToken } = useAuth()
@@ -370,6 +461,9 @@ export default function SettingsPage() {
 
       {/* 人名别名 */}
       <AliasManager />
+
+      {/* 登录密码 */}
+      <PasswordChanger />
 
       {/* 导出 */}
       <section className="card p-5">

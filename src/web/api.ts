@@ -72,6 +72,11 @@ export const api = {
   login: (password: string) =>
     req<{ ok: boolean }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
   logout: () => req<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  changePassword: (current: string, next: string) =>
+    req<{ ok: boolean }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current, next }),
+    }),
 
   listItems: (f: ItemFilters, page: number, pageSize: number) =>
     req<PagedItems>(`/api/items?${filtersToQuery(f)}&page=${page}&page_size=${pageSize}`),
