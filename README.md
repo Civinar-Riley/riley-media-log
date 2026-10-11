@@ -7,7 +7,7 @@
 跑在 Cloudflare Workers + D1 上，免费套餐即可长期运行，数据完全属于你自己。
 
 [![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](./LICENSE)
-[![version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)](https://github.com/Civinar-Riley/riley-media-log/releases)
+[![version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)](./package.json)
 [![platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange?style=flat-square)](https://developers.cloudflare.com/workers/)
 [![storage](https://img.shields.io/badge/storage-Cloudflare%20D1-orange?style=flat-square)](https://developers.cloudflare.com/d1/)
 [![frontend](https://img.shields.io/badge/React-19-blue?style=flat-square)](https://react.dev)
@@ -188,7 +188,7 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 
 ## 🕘 版本历史
 
-- **[v0.1.0](https://github.com/Civinar-Riley/riley-media-log/releases/tag/v0.1.0)（2026-10-11）**：首个可用版本。六大类别记录、四状态 + 进度、评分、观看流水与条目动态、类别自定义与页签、作者 / 导演 / 主演拆分与人名别名归一、十一维筛选（任一 / 全部匹配）、统计面板与图表下钻、随机推荐、个人清单、字段改名合并、CSV/JSON 导出、四套主题、PWA、密码登录 + Bearer 令牌 API、Excel 导入脚本、GitHub Actions 自动部署。详细变更见 [CHANGELOG.md](./CHANGELOG.md)。
+- **v0.1.0（2026-10-11）**：首个可用版本。六大类别记录、四状态 + 进度、评分、观看流水与条目动态、类别自定义与页签、作者 / 导演 / 主演拆分与人名别名归一、十一维筛选（任一 / 全部匹配）、统计面板与图表下钻、随机推荐、个人清单、字段改名合并、CSV/JSON 导出、四套主题、PWA、密码登录 + Bearer 令牌 API、Excel 导入脚本、GitHub Actions 自动部署。详细变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 📜 声明与授权
 

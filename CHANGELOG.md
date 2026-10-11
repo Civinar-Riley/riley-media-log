@@ -2,7 +2,7 @@
 
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)。「升级须知」列出升级时必须执行的操作（数据库迁移、新增配置等）；数据库迁移只追加不修改，任何旧版本都可按顺序升级到最新版。
 
-## [0.1.0] - 2026-10-11
+## 0.1.0 - 2026-10-11
 
 首个可用版本。
 
@@ -37,5 +37,3 @@
 - 创建 D1 数据库后，把 `database_id` 填入 `wrangler.jsonc`
 - 配置 secrets：`AUTH_PASSWORD`、`SESSION_SECRET`、`API_TOKEN`
 - 应用迁移：`npm run db:migrate:remote`；使用 GitHub Actions 自动部署时会自动执行
-
-[0.1.0]: https://github.com/Civinar-Riley/riley-media-log/releases/tag/v0.1.0
