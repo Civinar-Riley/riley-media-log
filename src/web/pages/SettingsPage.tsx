@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Download, Eye, EyeOff, FileJson, LogOut, Plus, X } from 'lucide-react'
@@ -413,6 +414,52 @@ function PasswordChanger() {
   )
 }
 
+/** 自动补全数据源状态 */
+function DataSourceSection() {
+  const q = useQuery({ queryKey: ['autofill-status'], queryFn: api.autofillStatus, staleTime: 60_000 })
+  const row = (name: string, ok: boolean, desc: ReactNode) => (
+    <div className="flex items-start justify-between gap-3 border-b border-line py-2.5 last:border-none">
+      <div>
+        <p className="text-sm font-medium text-ink">
+          {ok ? '✓ ' : ''}
+          {name}
+        </p>
+        <p className="mt-0.5 text-xs text-faint">{desc}</p>
+      </div>
+      <span className={`shrink-0 text-xs ${ok ? 'text-brand' : 'text-danger'}`}>{ok ? '已就绪' : '未配置'}</span>
+    </div>
+  )
+  return (
+    <section className="card p-5">
+      <h2 className="serif mb-1 font-medium text-ink">自动补全数据源</h2>
+      <p className="mb-4 text-xs text-faint">
+        条目详情页的「自动补全」从这里取数据；Key 只存在 Worker 的 secret 里，不会暴露给前端。
+      </p>
+      {row(
+        'TMDB（电影 / 剧集 / 综艺）',
+        q.data?.tmdb ?? false,
+        <>
+          免费申请：<a className="text-brand hover:underline" href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer">
+            themoviedb.org/settings/api
+          </a>{' '}
+          → 创建后执行 <code className="rounded bg-muted px-1">npx wrangler secret put TMDB_API_KEY</code>（本地写入 .dev.vars 同名字段）
+        </>,
+      )}
+      {row(
+        'Bangumi（动漫 / 漫画 / 小说）',
+        q.data?.bangumi ?? false,
+        <>
+          公开接口匿名即可用；想提升配额可在{' '}
+          <a className="text-brand hover:underline" href="https://next.bgm.tv/demo/access-token" target="_blank" rel="noreferrer">
+            next.bgm.tv/demo/access-token
+          </a>{' '}
+          生成 Token 后执行 <code className="rounded bg-muted px-1">npx wrangler secret put BANGUMI_TOKEN</code>
+        </>,
+      )}
+    </section>
+  )
+}
+
 export default function SettingsPage() {
   const { theme, followSystem, setTheme, setFollowSystem } = useTheme()
   const { logout, hasApiToken } = useAuth()
@@ -461,6 +508,9 @@ export default function SettingsPage() {
 
       {/* 人名别名 */}
       <AliasManager />
+
+      {/* 自动补全数据源 */}
+      <DataSourceSection />
 
       {/* 登录密码 */}
       <PasswordChanger />

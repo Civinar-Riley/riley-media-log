@@ -5,6 +5,7 @@ import { itemsRoutes } from './routes/items'
 import { listsRoutes } from './routes/lists'
 import { fieldsRoutes } from './routes/fields'
 import { settingsRoutes } from './routes/settings'
+import { autofillRoutes } from './routes/autofill'
 import { statsRoutes } from './routes/stats'
 import { exportRoutes } from './routes/export'
 
@@ -25,6 +26,7 @@ app.route('/api/items', itemsRoutes)
 app.route('/api/lists', listsRoutes)
 app.route('/api/fields', fieldsRoutes)
 app.route('/api/settings', settingsRoutes)
+app.route('/api/autofill', autofillRoutes)
 app.route('/api', statsRoutes)
 app.route('/api', exportRoutes)
 

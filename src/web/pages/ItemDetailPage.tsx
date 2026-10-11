@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarPlus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CalendarPlus, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { api } from '../api'
 import { CategoryBadge, CoverImage, FinishBadge, Loading, Modal, PageHeader, RatingStars, StatusBadge } from '../components/ui'
+import { AutofillDialog } from '../components/AutofillDialog'
 import { BackLink } from '../components/ui'
 
 function fmtDateTime(iso: string): string {
@@ -51,6 +52,7 @@ export default function ItemDetailPage() {
   const [viewComment, setViewComment] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [autofillOpen, setAutofillOpen] = useState(false)
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['item', itemId] })
@@ -107,6 +109,10 @@ export default function ItemDetailPage() {
               <Pencil className="h-4 w-4" />
               编辑
             </button>
+            <button className="btn" onClick={() => setAutofillOpen(true)}>
+              <Sparkles className="h-4 w-4" />
+              自动补全
+            </button>
             <button className="btn" onClick={() => setPickerOpen(true)}>
               <Plus className="h-4 w-4" />
               加入清单
@@ -136,6 +142,11 @@ export default function ItemDetailPage() {
               <StatusBadge status={item.status} />
               <FinishBadge status={item.finish_status} />
               <RatingStars value={item.rating} size={16} />
+              {item.external_rating != null && (
+                <span className="inline-flex h-5 items-center rounded border border-line px-1.5 text-[11px] leading-none text-soft">
+                  {item.tmdb_id ? 'TMDB' : item.bgm_id ? 'Bangumi' : '外部'} {item.external_rating.toFixed(1)}
+                </span>
+              )}
             </div>
           </div>
 
@@ -258,6 +269,14 @@ export default function ItemDetailPage() {
           )}
         </div>
       </div>
+
+      {/* 自动补全弹窗 */}
+      <AutofillDialog
+        item={item}
+        open={autofillOpen}
+        onClose={() => setAutofillOpen(false)}
+        onApplied={invalidate}
+      />
 
       {/* 清单选择弹窗 */}
       <Modal open={pickerOpen} title="加入 / 移出清单" onClose={() => setPickerOpen(false)}>

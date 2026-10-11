@@ -97,6 +97,9 @@ export interface Item {
   notes: string
   review: string
   tmdb_id: string | null
+  bgm_id: number | null
+  /** 外部源评分（TMDB/Bangumi），与个人评分分开 */
+  external_rating: number | null
   created_at: string
   updated_at: string
   /** 列表页附带：最近一次观看日期 */
@@ -105,6 +108,58 @@ export interface Item {
   viewings?: Viewing[]
   lists?: { id: number; name: string }[]
   activity?: Activity[]
+}
+
+/** 自动补全 */
+export type AutofillSource = 'tmdb' | 'bangumi'
+
+export interface AutofillCandidate {
+  externalId: string
+  title: string
+  year: number | null
+  coverThumb: string | null
+  overview: string
+  rating: number | null
+}
+
+export interface AutofillFieldOption {
+  key: string
+  label: string
+  preview: string
+}
+
+export interface AutofillFieldOptions {
+  available: AutofillFieldOption[]
+  filled: AutofillFieldOption[]
+  displayTitle: string
+  externalRating: number | null
+}
+
+export interface AutofillApplyResult {
+  applied: Record<string, { before: unknown; after: unknown }>
+  skipped: string[]
+  logId: number
+}
+
+export interface AutofillLog {
+  id: number
+  source: string
+  external_id: string
+  fields: Record<string, { before: unknown; after: unknown }>
+  applied_at: string
+  undone_at: string | null
+}
+
+export const AUTOFILL_FIELD_LABELS: Record<string, string> = {
+  cover_url: '封面',
+  year: '年份',
+  regions: '地区',
+  tags: '类型标签',
+  directors: '导演',
+  actors: '主演',
+  authors: '作者',
+  episode_count: '总集数',
+  external_rating: '外部评分',
 }
 
 export interface Viewing {

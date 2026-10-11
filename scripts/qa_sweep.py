@@ -231,7 +231,7 @@ r, csv = api('/api/export.csv', raw=True)
 text = csv.decode('utf-8-sig')
 lines = [l for l in text.split('\r\n') if l.strip()]
 check('CSV 带 BOM', csv[:3] == b'\xef\xbb\xbf')
-check('CSV 表头 21 列', len(lines[0].split(',')) == 21, len(lines[0].split(',')))
+check('CSV 表头 22 列', len(lines[0].split(',')) == 22, len(lines[0].split(',')))
 check('CSV 行数与条目数一致', len(lines) - 1 == TOTAL + 1, len(lines))
 r, js = api('/api/export.json', raw=True)
 check('JSON 导出数量一致', json.loads(js)['count'] == TOTAL + 1)
@@ -255,6 +255,36 @@ st, _ = api('/api/auth/change-password', 'POST', {'current': 'TempPass123', 'nex
 check('改回原密码', st == 200, st)
 st, d = api('/api/auth/login', 'POST', {'password': AUTH_PWD}, token=None)
 check('原密码恢复可登录', st == 200 and d.get('ok'), (st, d))
+
+print('== 自动补全（无 Key 时的路径）==')
+_, qa2 = api('/api/items', 'POST', {'title': 'QA补全测试', 'category': 'movie', 'status': 'want'})
+qaid = qa2['id']
+st, d = api('/api/autofill/status')
+check('数据源状态接口', st == 200 and 'tmdb' in d and 'bangumi' in d, d)
+st, d = api('/api/autofill/preview', 'POST', {'item_id': qaid})
+if st == 503:
+    check('未配置 Key：preview 503 带提示', 'TMDB' in d.get('error', ''), d)
+elif st == 200:
+    check('已配置 Key：preview 返回候选', isinstance(d.get('candidates'), list), type(d.get('candidates')))
+else:
+    check('preview 状态异常', False, (st, d))
+st, d = api('/api/autofill/apply', 'POST', {'item_id': qaid, 'source': 'tmdb', 'external_id': '123', 'fields': ['cover_url']})
+if st == 503:
+    check('未配置 Key：apply 503', 'TMDB' in d.get('error', ''), d)
+elif st == 200:
+    check('已配置 Key：apply 返回 applied', 'applied' in d, d)
+else:
+    check('apply 状态异常', False, (st, d))
+st, d = api('/api/autofill/fields', 'POST', {'item_id': qaid, 'source': 'tmdb', 'external_id': '123'})
+if st == 503:
+    check('未配置 Key：fields 503', True)
+elif st == 200:
+    check('已配置 Key：fields 返回 available', 'available' in d, d)
+else:
+    check('fields 状态异常', False, (st, d))
+st, d = api('/api/autofill/undo', 'POST', {'log_id': 999999})
+check('撤回不存在记录 404', st == 404, st)
+api(f'/api/items/{qaid}', 'DELETE')
 
 print('== 清理 ==')
 api(f'/api/items/{iid}', 'DELETE')

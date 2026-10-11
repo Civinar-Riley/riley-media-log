@@ -1,5 +1,10 @@
 import type {
   Activity,
+  AutofillApplyResult,
+  AutofillCandidate,
+  AutofillFieldOptions,
+  AutofillLog,
+  AutofillSource,
   CategoryDef,
   Facets,
   Item,
@@ -99,6 +104,23 @@ export const api = {
     req<Viewing>(`/api/items/${itemId}/viewings`, { method: 'POST', body: JSON.stringify(body) }),
   deleteViewing: (itemId: number, vid: number) =>
     req<{ ok: boolean }>(`/api/items/${itemId}/viewings/${vid}`, { method: 'DELETE' }),
+
+  autofillLogs: (item_id: number) => req<AutofillLog[]>(`/api/autofill/logs?item_id=${item_id}`),
+  autofillStatus: () => req<{ tmdb: boolean; bangumi: boolean }>('/api/autofill/status'),
+  autofillPreview: (body: { item_id: number; source?: AutofillSource; query?: string }) =>
+    req<{ source: AutofillSource; candidates: AutofillCandidate[] }>('/api/autofill/preview', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  autofillFields: (body: { item_id: number; source: AutofillSource; external_id: string }) =>
+    req<AutofillFieldOptions>('/api/autofill/fields', { method: 'POST', body: JSON.stringify(body) }),
+  autofillApply: (body: { item_id: number; source: AutofillSource; external_id: string; fields: string[] }) =>
+    req<AutofillApplyResult>('/api/autofill/apply', { method: 'POST', body: JSON.stringify(body) }),
+  autofillUndo: (log_id: number) =>
+    req<{ restored: string[]; skipped: string[] }>('/api/autofill/undo', {
+      method: 'POST',
+      body: JSON.stringify({ log_id }),
+    }),
 
   lists: () => req<ItemList[]>('/api/lists'),
   getList: (id: number) => req<ItemList & { items: (Item & { added_at: string })[] }>(`/api/lists/${id}`),

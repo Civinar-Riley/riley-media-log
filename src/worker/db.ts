@@ -43,6 +43,8 @@ export function mapItem(row: Record<string, unknown>): Item {
     notes: (row.notes as string) ?? '',
     review: (row.review as string) ?? '',
     tmdb_id: (row.tmdb_id as string | null) ?? null,
+    bgm_id: (row.bgm_id as number | null) ?? null,
+    external_rating: (row.external_rating as number | null) ?? null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
     last_watched: (row.last_watched as string | null) ?? null,

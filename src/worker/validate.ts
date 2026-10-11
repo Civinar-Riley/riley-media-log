@@ -68,6 +68,30 @@ export const changePasswordSchema = z.object({
   next: z.string().min(6, '新密码至少 6 位').max(100),
 })
 
+export const AUTOFILL_SOURCES = ['tmdb', 'bangumi'] as const
+const autofillSourceSchema = z.enum(AUTOFILL_SOURCES)
+
+export const autofillPreviewSchema = z.object({
+  item_id: z.number().int().positive(),
+  source: autofillSourceSchema.optional(),
+  query: z.string().trim().max(200).optional(),
+})
+
+export const autofillApplySchema = z.object({
+  item_id: z.number().int().positive(),
+  source: autofillSourceSchema,
+  external_id: z.string().trim().min(1).max(40),
+  fields: z.array(z.string().trim().min(1).max(40)).min(1, '至少选择一个要补全的字段').max(10),
+})
+
+export const autofillFieldOptionsSchema = z.object({
+  item_id: z.number().int().positive(),
+  source: autofillSourceSchema,
+  external_id: z.string().trim().min(1).max(40),
+})
+
+export const autofillUndoSchema = z.object({ log_id: z.number().int().positive() })
+
 export const aliasesSchema = z.object({
   aliases: z
     .record(z.string().trim().min(1).max(60), z.string().trim().min(1).max(60))

@@ -9,7 +9,7 @@ export const exportRoutes = new Hono<{ Bindings: Env }>()
 
 const CSV_HEADERS = [
   '标题', '类别', '年份', '季号', '制片地区', '类型标签', '作者', '导演', '主演', '状态', '进度',
-  '总集数', '我的评分', '观看渠道', '完结状态', '最近观看', '备注', '观后感', '封面', '添加时间', '更新时间',
+  '总集数', '我的评分', '外部评分', '观看渠道', '完结状态', '最近观看', '备注', '观后感', '封面', '添加时间', '更新时间',
 ]
 
 function csvCell(v: unknown): string {
@@ -32,6 +32,7 @@ function itemToRow(it: Item, categoryLabel: (id: string) => string): unknown[] {
     it.progress,
     it.episode_count ?? '',
     it.rating ?? '',
+    it.external_rating ?? '',
     it.channel,
     it.finish_status ? (FINISH_LABELS[it.finish_status] ?? it.finish_status) : '',
     it.last_watched ?? '',
