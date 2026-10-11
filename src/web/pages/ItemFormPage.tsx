@@ -175,6 +175,7 @@ export default function ItemFormPage() {
       qc.invalidateQueries({ queryKey: ['items'] })
       qc.invalidateQueries({ queryKey: ['facets'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
+      qc.invalidateQueries({ queryKey: ['status-counts'] })
       if (editing) qc.invalidateQueries({ queryKey: ['item', itemId] })
       if (editing) {
         // 历史里本来就有详情页（列表→详情→编辑），直接退回去即可：

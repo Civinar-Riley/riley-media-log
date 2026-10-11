@@ -90,6 +90,10 @@ export const api = {
     req<Item>(`/api/items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteItem: (id: number) => req<{ ok: boolean }>(`/api/items/${id}`, { method: 'DELETE' }),
   random: (f: ItemFilters) => req<Item>(`/api/items/random?${filtersToQuery(f)}`),
+  statusCounts: (category: string[]) =>
+    req<Record<string, number>>(
+      `/api/items/status-counts${category.length ? `?category=${encodeURIComponent(category.join(','))}` : ''}`
+    ),
 
   addViewing: (itemId: number, body: { watched_on: string; comment: string }) =>
     req<Viewing>(`/api/items/${itemId}/viewings`, { method: 'POST', body: JSON.stringify(body) }),

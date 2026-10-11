@@ -86,6 +86,15 @@ check('完结状态筛选', d['total'] > 0, d['total'])
 _, d = api('/api/items?authors=' + urllib.parse.quote('远瞳') + '&author_mode=any&page_size=1')
 check('作者筛选 远瞳 3 条', d['total'] == 3, d['total'])
 
+print('== 状态计数（快捷条徽标）==')
+_, d = api('/api/items/status-counts')
+check('全局状态计数合计 2013', sum(d.values()) == 2013, d)
+_, d = api('/api/items/status-counts?category=movie')
+check('电影状态计数合计 649', sum(d.values()) == 649, d)
+check('电影想看为 0', d.get('want') == 0, d)
+_, d = api('/api/items/status-counts?category=anime,series')
+check('多类别计数合计 1132（动漫411+剧集721）', sum(d.values()) == 1132, d)
+
 print('== 临时数据 CRUD（别名/人员/AND）==')
 _, settings0 = api('/api/settings')
 aliases_before = settings0['aliases']

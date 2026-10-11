@@ -357,6 +357,11 @@ export default function ListPage() {
     placeholderData: (prev) => prev,
   })
   const facetsQ = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
+  const statusCountsQ = useQuery({
+    queryKey: ['status-counts', filters.category?.join(',') ?? ''],
+    queryFn: () => api.statusCounts(filters.category ?? []),
+    placeholderData: (prev) => prev,
+  })
   const { visible: visibleCats } = useCategories()
   const catCounts = useMemo(
     () => new Map((facetsQ.data?.categories ?? []).map(([k, n]) => [k, n])),
@@ -474,7 +479,7 @@ export default function ListPage() {
         ))}
       </div>
 
-      {/* 状态快捷条（与筛选器里的状态是同一参数） */}
+      {/* 状态快捷条（与筛选器里的状态是同一参数，计数随当前类别页签） */}
       <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
         {STATUSES.map((s) => {
           const active = filters.status?.length === 1 && filters.status[0] === s
@@ -485,6 +490,7 @@ export default function ListPage() {
               onClick={() => patchFilters({ status: active ? [] : [s] })}
             >
               {STATUS_LABELS[s]}
+              <span className="text-[11px] opacity-70">{statusCountsQ.data?.[s] ?? 0}</span>
             </button>
           )
         })}

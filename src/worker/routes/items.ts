@@ -112,6 +112,19 @@ itemsRoutes.post('/', async (c) => {
   return c.json(mapItem(row!), 201)
 })
 
+/** 状态计数：可按类别范围过滤（用于状态快捷条的徽标；注意需在 /:id 之前注册） */
+itemsRoutes.get('/status-counts', async (c) => {
+  const raw = c.req.query('category') ?? ''
+  const cats = raw.split(',').map((s) => s.trim()).filter(Boolean)
+  const where = cats.length ? `WHERE category IN (${cats.map(() => '?').join(',')})` : ''
+  const rows = await c.env.DB.prepare(`SELECT status, COUNT(*) AS n FROM items ${where} GROUP BY status`)
+    .bind(...cats)
+    .all<{ status: string; n: number }>()
+  const counts: Record<string, number> = { want: 0, watching: 0, done: 0, dropped: 0 }
+  for (const r of rows.results) counts[r.status] = r.n
+  return c.json(counts)
+})
+
 /** 详情：条目 + 观看流水 + 所在清单 + 动态时间线 */
 itemsRoutes.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))

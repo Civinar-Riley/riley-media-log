@@ -23,6 +23,7 @@ export default function RandomPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['items'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
+      qc.invalidateQueries({ queryKey: ['status-counts'] })
       setSeed((s) => s + 1) // 顺手摇下一个
     },
   })

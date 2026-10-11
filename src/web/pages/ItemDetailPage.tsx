@@ -56,6 +56,7 @@ export default function ItemDetailPage() {
     qc.invalidateQueries({ queryKey: ['item', itemId] })
     qc.invalidateQueries({ queryKey: ['items'] })
     qc.invalidateQueries({ queryKey: ['stats'] })
+    qc.invalidateQueries({ queryKey: ['status-counts'] })
   }
 
   const addViewing = useMutation({
