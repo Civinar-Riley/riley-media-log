@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import {
@@ -118,6 +118,7 @@ export default function ItemFormPage() {
   const itemId = id ? Number(id) : undefined
   const editing = itemId !== undefined
   const navigate = useNavigate()
+  const location = useLocation()
   const qc = useQueryClient()
 
   const existing = useQuery({
@@ -167,7 +168,15 @@ export default function ItemFormPage() {
       qc.invalidateQueries({ queryKey: ['facets'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
       if (editing) qc.invalidateQueries({ queryKey: ['item', itemId] })
-      navigate(`/items/${editing ? itemId : saved.id}`)
+      if (editing) {
+        // 历史里本来就有详情页（列表→详情→编辑），直接退回去即可：
+        // 编辑页不留历史，之后点「返回」自然回到列表；直接打开编辑页的情况退无可退，replace 落到详情
+        if (location.key === 'default') navigate(`/items/${itemId}`, { replace: true })
+        else navigate(-1)
+      } else {
+        // 新建后落在详情，replace 让「返回」回到来处而不是空白表单
+        navigate(`/items/${saved.id}`, { replace: true })
+      }
     },
     onError: (err) => setError(err instanceof Error ? err.message : '保存失败'),
   })
