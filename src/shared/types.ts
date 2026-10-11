@@ -152,6 +152,8 @@ export interface Facets {
   channels: ValueCount[]
   year_min: number | null
   year_max: number | null
+  /** 有年份的条目数（年份区间筛选的上限） */
+  year_count: number
 }
 
 export interface Stats {

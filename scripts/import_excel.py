@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-把 Excel 存量记录转换为 data/import.sql，供 wrangler d1 execute 导入。
+把 Excel 存量记录转换为 import.sql，供 wrangler d1 execute 导入。
 
-规则（与设计共识一致）：
-- 只导入 5 个分类表（动漫/电影/剧集/小说/综艺），「未知待定」不导入
+用法：
+    python scripts/import_excel.py --input 你的表.xlsx [--output data/import.sql]
+
+说明：
+- 默认按 5 个分类工作表读取（动漫/电影/剧集/小说/综艺），表内其余工作表跳过；
+  列按表头关键词自动识别（时间/地区/类型/作者/集数/状态/进度/备注/观后感），
+  如果你的表头用词不同，调整 detect_columns 里的关键词即可
 - 小说表内「类型=漫画」的行归类为漫画(manga)，其余为小说(novel)
 - 进度「已阅」或空 → 看过(done)；数字/其他文本 → 在看(watching) + 进度文本
 - 地区按空格和 / 拆分为数组；类型标签按 / 拆分
-- 小说表的「状态」→ 完结状态；「作者」→ 主创
+- 小说表的「状态」→ 完结状态；「作者」→ 作者字段
 - 标题+年份+类别 查重：疑似重复照常导入，备注前加 [疑似重复] 标记
 - 拼音与首字母由 pypinyin 计算（用于搜索与排序）
+- 生成的 SQL 不包事务语句（远程 D1 会拒绝 BEGIN TRANSACTION，详见 防踩坑.md）
 """
+import argparse
 import json
 import re
 import sys
@@ -20,9 +27,10 @@ from pathlib import Path
 import openpyxl
 from pypinyin import lazy_pinyin, Style
 
-XLSX = Path(__file__).resolve().parent.parent / "电影动漫小说剧集.xlsm"
-OUT_SQL = Path(__file__).resolve().parent.parent / "data" / "import.sql"
-OUT_REPORT = Path(__file__).resolve().parent.parent / "data" / "import_report.txt"
+ROOT = Path(__file__).resolve().parent.parent
+XLSX = ROOT / "电影动漫小说剧集.xlsm"  # 运行时由 --input 覆盖
+OUT_SQL = ROOT / "data" / "import.sql"
+OUT_REPORT = ROOT / "data" / "import_report.txt"
 
 SHEET_CATEGORY = {"动漫": "anime", "电影": "movie", "剧集": "series", "综艺": "variety", "小说": "novel"}
 
@@ -214,6 +222,19 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="把 Excel 追片记录转换为可导入 D1 的 SQL")
+    parser.add_argument("--input", required=True, help="Excel 文件路径（.xlsx / .xlsm）")
+    parser.add_argument("--output", default=str(OUT_SQL), help="输出 SQL 路径（默认 data/import.sql）")
+    parser.add_argument("--report", default=str(OUT_REPORT), help="对账报告路径（默认 data/import_report.txt）")
+    args = parser.parse_args()
+
+    XLSX = Path(args.input)
+    OUT_SQL = Path(args.output)
+    OUT_REPORT = Path(args.report)
+    if not XLSX.exists():
+        print(f"找不到输入文件: {XLSX}", file=sys.stderr)
+        sys.exit(1)
+
     try:
         main()
     except Exception as e:

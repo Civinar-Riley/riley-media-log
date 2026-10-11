@@ -36,7 +36,9 @@ fieldsRoutes.get('/facets', async (c) => {
       `SELECT channel AS v, COUNT(*) AS n FROM items WHERE channel <> ''
        GROUP BY channel ORDER BY n DESC, v COLLATE NOCASE`
     ).all<{ v: string; n: number }>(),
-    c.env.DB.prepare(`SELECT MIN(year) AS y_min, MAX(year) AS y_max FROM items`).first<{ y_min: number | null; y_max: number | null }>(),
+    c.env.DB.prepare(
+      `SELECT MIN(year) AS y_min, MAX(year) AS y_max, COUNT(year) AS y_count FROM items`
+    ).first<{ y_min: number | null; y_max: number | null; y_count: number }>(),
   ])
   return c.json({
     categories: cats.results.map((r) => [r.v, r.n] as [string, number]),
@@ -48,6 +50,7 @@ fieldsRoutes.get('/facets', async (c) => {
     channels: channels.results.map((r) => [r.v, r.n] as [string, number]),
     year_min: years?.y_min ?? null,
     year_max: years?.y_max ?? null,
+    year_count: years?.y_count ?? 0,
   })
 })
 

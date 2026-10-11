@@ -21,7 +21,7 @@
 
 ## 📖 项目简介
 
-书影集是从一份记录了约两千条影视小说的 Excel 表迁移而来的个人记录工具。
+书影集是一个自托管的个人书影音记录工具，起源于「把多年零散的追片记录整理明白」这个朴素需求。
 
 - **自己填**：标题、年份、地区、类型标签、主创、状态、进度、评分、封面、备注、观后感，全部手动可控，不依赖任何外部数据源；
 - **随便筛**：十一个维度任意组合筛选，多选字段支持「任一匹配 / 同时命中全部」两种模式；
@@ -49,7 +49,7 @@
 | :---: | :---: |
 | ![设置](./docs/screenshots/settings-night.png) | ![手机端](./docs/screenshots/mobile.png) |
 
-*截图取自真实界面；为保护隐私，未展示任何真实条目名称。*
+*界面截图使用本地演示数据（`python scripts/seed_demo.py` 生成），非真实记录。*
 
 ## ✨ 功能特性
 
@@ -119,7 +119,7 @@
 
 | 场景 | 操作 |
 | :--- | :--- |
-| **导入 Excel 存量记录** | 把 Excel 命名为 `电影动漫小说剧集.xlsm` 放到项目根目录 → `python scripts/import_excel.py` 生成 `data/import.sql` 与对账报告 → `npx wrangler d1 execute riley-media-log --local --file data/import.sql`。脚本按「动漫/电影/剧集/综艺/小说」五个工作表读取：进度「已阅」→看过、数字→在看+进度、小说表「类型=漫画」自动归入漫画、作者进主创、状态进完结状态；按「标题+年份+类别」查重，疑似重复照常导入并打 `[疑似重复]` 标记 |
+| **导入 Excel 存量记录** | `python scripts/import_excel.py --input 你的表.xlsx` 生成 `data/import.sql` 与对账报告 → `npx wrangler d1 execute riley-media-log --local --file data/import.sql`（线上库加 `--remote`）。脚本按表头关键词识别列、按「动漫/电影/剧集/综艺/小说」工作表读取（你的表头用词不同时，调整脚本里 detect_columns 的关键词即可）：进度「已阅」→看过、数字→在看+进度、小说表「类型=漫画」自动归入漫画、作者进作者字段、状态进完结状态；按「标题+年份+类别」查重打标 |
 | **日常记一笔** | 右上角「记一笔」→ 填个标题就能保存，其余字段随时补 |
 | **补记多年前的老片** | 记一笔 → 状态选「看过」→ 填年份 → 观后感写两句 → 顺手打个星 |
 | **记二刷** | 打开条目详情 → 观看流水里选日期、写一句感受 → 「记一次观看」 |
@@ -164,10 +164,11 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 ```text
 ├── migrations/            # D1 表结构迁移
 ├── scripts/
-│   ├── import_excel.py    # Excel → SQL 导入脚本（Python）
-│   └── qa_sweep.py        # API 回归测试（57 项，本地运行）
+│   ├── import_excel.py    # Excel → SQL 导入脚本（Python，--input 指定文件）
+│   ├── seed_demo.py       # 演示数据种子（虚构片名，供截图或体验）
+│   └── qa_sweep.py        # API 回归测试（以当前库为基准，任意数据集可跑）
 ├── public/                # PWA manifest、图标、Service Worker
-├── docs/screenshots/      # README 截图
+├── docs/screenshots/      # README 截图（演示数据）
 ├── src/
 │   ├── shared/            # 前后端共享：类型、枚举、筛选参数解析
 │   ├── worker/            # Hono 后端：认证、条目、清单、字段、统计、导出
@@ -196,7 +197,7 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 ## 📜 声明与授权
 
 - 基于 [MIT License](./LICENSE) 开源，可自由使用、修改与分发。
-- 本仓库只包含代码与文档，**不包含任何个人记录数据**；README 截图亦不含真实条目名。
+- 本仓库只包含代码与文档；README 截图使用演示数据生成。
 - 部署后的站点数据归部署者所有，与作者无关。
 
 ## 🙏 致谢
