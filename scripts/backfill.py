@@ -19,6 +19,7 @@
 """
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -199,6 +200,7 @@ def main():
             report['applied'].append({'item_id': it['id'], 'title': title, 'log_id': None, 'error': d.get('error')})
         time.sleep(args.delay)
 
+    os.makedirs('data', exist_ok=True)
     out = f'data/backfill_report_{time.strftime("%Y%m%d%H%M%S")}.json'
     json.dump(report, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'\n完成：应用 {applied_count} 条，待人工 {ambiguous} 条。报告已写入 {out}')

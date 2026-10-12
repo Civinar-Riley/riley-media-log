@@ -17,6 +17,7 @@
 """
 import argparse
 import json
+import os
 import random
 import sys
 import time
@@ -64,6 +65,7 @@ def cmd_snapshot(args):
         ],
     }
     out = args.out or f'data/audit_snapshot_{time.strftime("%Y%m%d%H%M%S")}.json'
+    os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
     json.dump(snap, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'快照 {len(items)} 条 × {len(fields)} 字段 → {out}')
     print(f'改库后运行对比：python scripts/item_audit.py diff {out}')
