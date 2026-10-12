@@ -133,10 +133,14 @@ export async function bgmDetails(env: Env, externalId: string): Promise<BgmDetai
   const year = parseInt(((raw.date ?? '') + '0000').slice(0, 4), 10)
   if (year) fields.year = year
   if (raw.tags?.length) {
-    fields.tags = [...raw.tags]
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 4)
-      .map((t) => t.name)
+    // 过滤「2023年10月」这类播出季日期标签（社区标签里很常见，但不是有效内容标签）
+    const clean = raw.tags.filter((t) => !/^\d{4}年(\d{1,2}月)?$/.test(t.name.trim()))
+    if (clean.length) {
+      fields.tags = clean
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 4)
+        .map((t) => t.name)
+    }
   }
   const regions = infoboxValue(raw, ['地区', '产地'])
   if (regions.length) fields.regions = regions
