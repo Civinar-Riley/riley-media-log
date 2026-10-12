@@ -325,6 +325,8 @@ export default function ListPage() {
   const navigate = useNavigate()
   const filters = useMemo(() => parseFilters(sp), [sp])
   const page = Math.max(1, Number(sp.get('page')) || 1)
+  // 每页条数（10 的倍数，默认 60；服务端上限 200）
+  const pageSize = Math.max(10, Math.min(200, Number(sp.get('page_size')) || 60))
   const [view, setView] = useState<'grid' | 'table'>(() =>
     localStorage.getItem('rml-view') === 'table' ? 'table' : 'grid'
   )
@@ -344,8 +346,11 @@ export default function ListPage() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('rml-last-view', filtersToQuery(filters))
-  }, [filters])
+    localStorage.setItem(
+      'rml-last-view',
+      filtersToQuery(filters) + (pageSize !== 60 ? `&page_size=${pageSize}` : '')
+    )
+  }, [filters, pageSize])
 
   function setCategory(id: string | null) {
     patchFilters({ category: id ? [id] : [] })
@@ -353,7 +358,7 @@ export default function ListPage() {
 
   const itemsQ = useQuery({
     queryKey: ['items', sp.toString()],
-    queryFn: () => api.listItems(filters, page, 60),
+    queryFn: () => api.listItems(filters, page, pageSize),
     placeholderData: (prev) => prev,
   })
   const facetsQ = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
@@ -380,6 +385,9 @@ export default function ListPage() {
   function patchFilters(patch: Partial<ItemFilters>) {
     const next = { ...filters, ...patch }
     const nsp = new URLSearchParams(filtersToQuery(next))
+    // 改筛选时保留「每页条数」设置（页码照旧回到第 1 页）
+    const ps = sp.get('page_size')
+    if (ps) nsp.set('page_size', ps)
     setSp(nsp)
   }
 
@@ -590,12 +598,20 @@ export default function ListPage() {
       {itemsQ.data && (
         <Pagination
           page={page}
-          pageSize={itemsQ.data.page_size}
+          pageSize={pageSize}
           total={total}
           onPage={(p) => {
             const nsp = new URLSearchParams(sp)
             if (p <= 1) nsp.delete('page')
             else nsp.set('page', String(p))
+            setSp(nsp)
+            window.scrollTo({ top: 0 })
+          }}
+          onPageSize={(n) => {
+            const nsp = new URLSearchParams(sp)
+            if (n === 60) nsp.delete('page_size')
+            else nsp.set('page_size', String(n))
+            nsp.delete('page') // 换每页条数后回到第 1 页
             setSp(nsp)
             window.scrollTo({ top: 0 })
           }}

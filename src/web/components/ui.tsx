@@ -208,22 +208,26 @@ export function Pagination({
   pageSize,
   total,
   onPage,
+  onPageSize,
 }: {
   page: number
   pageSize: number
   total: number
   onPage: (p: number) => void
+  /** 传入后显示「每页 N 条」选择器（10 的倍数） */
+  onPageSize?: (n: number) => void
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize))
   // 点省略号弹出跳页输入框：记录被点开的是第几个省略号
   const [jumpAt, setJumpAt] = useState<number | null>(null)
   const [jumpText, setJumpText] = useState('')
-  if (pages <= 1) return null
+  if (total === 0 || (pages <= 1 && !onPageSize)) return null
   const nums: (number | '…')[] = []
   for (let i = 1; i <= pages; i++) {
     if (i === 1 || i === pages || Math.abs(i - page) <= 1) nums.push(i)
     else if (nums[nums.length - 1] !== '…') nums.push('…')
   }
+  const sizeOptions = [...new Set([10, 20, 30, 50, 60, 100, pageSize])].sort((a, b) => a - b)
   const closeJump = () => {
     setJumpAt(null)
     setJumpText('')
@@ -234,73 +238,94 @@ export function Pagination({
     closeJump()
   }
   return (
-    <div className="mt-6 flex items-center justify-center gap-1.5 text-sm">
-      <button className="btn h-8 px-2.5" disabled={page <= 1} onClick={() => onPage(page - 1)}>
-        上一页
-      </button>
-      {nums.map((n, i) =>
-        n === '…' ? (
-          <span key={`e${i}`} className="relative">
-            <button
-              className={`h-8 min-w-8 rounded-md px-1.5 transition ${
-                jumpAt === i ? 'bg-muted text-ink' : 'text-faint hover:bg-muted hover:text-ink'
-              }`}
-              title="跳转到指定页"
-              onClick={() => {
-                setJumpAt(i)
-                setJumpText(String(page))
-              }}
-            >
-              …
-            </button>
-            {jumpAt === i && (
-              <span className="card absolute bottom-full left-1/2 z-20 mb-1.5 flex -translate-x-1/2 items-center gap-1.5 p-1.5 shadow-lg">
-                <input
-                  autoFocus
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={pages}
-                  className="input h-8 w-20"
-                  value={jumpText}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setJumpText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.nativeEvent.isComposing || e.keyCode === 229) return
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      submitJump()
-                    } else if (e.key === 'Escape') {
-                      closeJump()
-                    }
-                  }}
-                  onBlur={() => setTimeout(closeJump, 150)}
-                  placeholder="页码"
-                />
-                <button className="btn btn-primary h-8 px-2.5" onClick={submitJump}>
-                  跳转
-                </button>
-              </span>
-            )}
-          </span>
-        ) : (
-          <button
-            key={n}
-            onClick={() => onPage(n)}
-            className={`h-8 min-w-8 rounded-md px-2 transition ${
-              n === page ? 'bg-brand text-brand-ink' : 'text-soft hover:bg-muted'
-            }`}
-          >
-            {n}
+    <div className="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm">
+      {pages > 1 && (
+        <>
+          <button className="btn h-8 px-2.5" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+            上一页
           </button>
-        )
+          {nums.map((n, i) =>
+            n === '…' ? (
+              <span key={`e${i}`} className="relative">
+                <button
+                  className={`h-8 min-w-8 rounded-md px-1.5 transition ${
+                    jumpAt === i ? 'bg-muted text-ink' : 'text-faint hover:bg-muted hover:text-ink'
+                  }`}
+                  title="跳转到指定页"
+                  onClick={() => {
+                    setJumpAt(i)
+                    setJumpText(String(page))
+                  }}
+                >
+                  …
+                </button>
+                {jumpAt === i && (
+                  <span className="card absolute bottom-full left-1/2 z-20 mb-1.5 flex -translate-x-1/2 items-center gap-1.5 p-1.5 shadow-lg">
+                    <input
+                      autoFocus
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={pages}
+                      className="input h-8 w-20"
+                      value={jumpText}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setJumpText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          submitJump()
+                        } else if (e.key === 'Escape') {
+                          closeJump()
+                        }
+                      }}
+                      onBlur={() => setTimeout(closeJump, 150)}
+                      placeholder="页码"
+                    />
+                    <button className="btn btn-primary h-8 px-2.5" onClick={submitJump}>
+                      跳转
+                    </button>
+                  </span>
+                )}
+              </span>
+            ) : (
+              <button
+                key={n}
+                onClick={() => onPage(n)}
+                className={`h-8 min-w-8 rounded-md px-2 transition ${
+                  n === page ? 'bg-brand text-brand-ink' : 'text-soft hover:bg-muted'
+                }`}
+              >
+                {n}
+              </button>
+            )
+          )}
+          <button className="btn h-8 px-2.5" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+            下一页
+          </button>
+        </>
       )}
-      <button className="btn h-8 px-2.5" disabled={page >= pages} onClick={() => onPage(page + 1)}>
-        下一页
-      </button>
-      <span className="ml-2 text-xs text-faint">
+      <span className="text-xs text-faint">
         共 {total} 条 / {pages} 页
       </span>
+      {onPageSize && (
+        <label className="flex items-center gap-1 text-xs text-faint">
+          每页
+          <select
+            className="input h-7 w-auto px-1.5 text-xs"
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+          >
+            {sizeOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          条
+        </label>
+      )}
     </div>
   )
 }
