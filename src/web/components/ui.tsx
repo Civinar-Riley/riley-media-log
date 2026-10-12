@@ -260,7 +260,7 @@ export function Pagination({
                   …
                 </button>
                 {jumpAt === i && (
-                  <span className="card absolute bottom-full left-1/2 z-20 mb-1.5 flex -translate-x-1/2 items-center gap-1.5 p-1.5 shadow-lg">
+                  <span className="card absolute bottom-full left-1/2 z-20 mb-1.5 flex w-max -translate-x-1/2 items-center gap-1.5 p-1.5 shadow-lg">
                     <input
                       autoFocus
                       type="number"
@@ -283,7 +283,7 @@ export function Pagination({
                       onBlur={() => setTimeout(closeJump, 150)}
                       placeholder="页码"
                     />
-                    <button className="btn btn-primary h-8 px-2.5" onClick={submitJump}>
+                    <button className="btn btn-primary h-8 shrink-0 px-2.5 whitespace-nowrap" onClick={submitJump}>
                       跳转
                     </button>
                   </span>
