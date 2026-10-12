@@ -33,7 +33,7 @@
 
 ## 📷 界面预览
 
-| 片单 · 类别页签（晨白） | 统计面板（晨白） |
+| 片单 · 类别页签（夜幕） | 统计面板（夜幕） |
 | :---: | :---: |
 | ![片单](./docs/screenshots/list.png) | ![统计](./docs/screenshots/stats.png) |
 
@@ -41,7 +41,7 @@
 | :---: | :---: |
 | ![设置](./docs/screenshots/settings-night.png) | ![手机端](./docs/screenshots/mobile.png) |
 
-*界面截图使用本地演示数据（`python scripts/seed_demo.py` 生成），非真实记录。*
+*界面截图来自演示数据（在线演示站 [logdemo.civinar.eu.cc](https://logdemo.civinar.eu.cc)，密码 demo），非真实记录。*
 
 ## ✨ 功能特性
 
