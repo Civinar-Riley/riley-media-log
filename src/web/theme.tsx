@@ -22,11 +22,20 @@ const Ctx = createContext<ThemeCtx | null>(null)
 function effective(): ThemeId {
   const saved = localStorage.getItem('rml-theme') as ThemeId | null
   if (saved && THEMES.some((t) => t.id === saved)) return saved
-  return 'dawn'
+  return 'night'
+}
+
+/** 主题背景色同步到浏览器地址栏颜色（PWA/移动端观感） */
+function syncThemeColor() {
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (!meta) return
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+  if (bg) meta.setAttribute('content', bg)
 }
 
 function applyTheme(theme: ThemeId) {
   document.documentElement.dataset.theme = theme
+  syncThemeColor()
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

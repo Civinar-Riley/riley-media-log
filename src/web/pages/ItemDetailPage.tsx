@@ -18,9 +18,9 @@ function todayLocal(): string {
 function Meta({ label, value }: { label: string; value?: React.ReactNode }) {
   if (value === undefined || value === null || value === '') return null
   return (
-    <div>
+    <div className="min-w-0">
       <p className="label">{label}</p>
-      <p className="mt-0.5 text-sm text-ink">{value}</p>
+      <p className="mt-0.5 text-sm break-words text-ink">{value}</p>
     </div>
   )
 }
@@ -31,8 +31,8 @@ function PeopleRow({ label, people, param, modeParam }: { label: string; people:
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="label mr-1">{label}</span>
       {people.map((p) => (
-        <Link key={p} to={`/?${param}=${encodeURIComponent(p)}&${modeParam}=any`} className="chip">
-          {p}
+        <Link key={p} to={`/?${param}=${encodeURIComponent(p)}&${modeParam}=any`} className="chip max-w-full min-w-0">
+          <span className="truncate">{p}</span>
         </Link>
       ))}
     </div>
@@ -136,7 +136,7 @@ export default function ItemDetailPage() {
         {/* 右：信息 */}
         <div className="anim space-y-4" style={{ animationDelay: '60ms' }}>
           <div>
-            <h2 className="serif text-2xl font-semibold text-ink md:text-3xl">{item.title}</h2>
+            <h2 className="serif text-2xl font-semibold break-words text-ink md:text-3xl">{item.title}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <CategoryBadge category={item.category} />
               <StatusBadge status={item.status} />
@@ -177,8 +177,8 @@ export default function ItemDetailPage() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="label mr-1">标签</span>
                   {item.tags.map((t) => (
-                    <Link key={t} to={`/?tags=${encodeURIComponent(t)}&tag_mode=any`} className="chip">
-                      {t}
+                    <Link key={t} to={`/?tags=${encodeURIComponent(t)}&tag_mode=any`} className="chip max-w-full min-w-0">
+                      <span className="truncate">{t}</span>
                     </Link>
                   ))}
                 </div>
@@ -189,13 +189,13 @@ export default function ItemDetailPage() {
           {item.notes && (
             <div className="card p-4">
               <p className="label mb-1.5">备注</p>
-              <p className="text-sm whitespace-pre-wrap text-soft">{item.notes}</p>
+              <p className="text-sm break-words whitespace-pre-wrap text-soft">{item.notes}</p>
             </div>
           )}
           {item.review && (
             <div className="card border-l-2 border-l-brand p-4">
               <p className="label mb-1.5">观后感</p>
-              <p className="text-sm whitespace-pre-wrap text-ink">{item.review}</p>
+              <p className="text-sm break-words whitespace-pre-wrap text-ink">{item.review}</p>
             </div>
           )}
 
@@ -220,9 +220,9 @@ export default function ItemDetailPage() {
               <ul className="divide-y divide-line">
                 {item.viewings.map((v) => (
                   <li key={v.id} className="group flex items-center justify-between gap-3 py-2">
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-sm font-medium text-ink">{v.watched_on}</span>
-                      {v.comment && <span className="ml-2 text-sm text-soft">{v.comment}</span>}
+                      {v.comment && <span className="ml-2 text-sm break-words text-soft">{v.comment}</span>}
                     </div>
                     <button
                       className="btn btn-danger h-7 px-2 opacity-0 transition group-hover:opacity-100"
@@ -244,8 +244,8 @@ export default function ItemDetailPage() {
               <p className="label mb-2">所在清单</p>
               <div className="flex flex-wrap gap-1.5">
                 {item.lists.map((l) => (
-                  <Link key={l.id} to={`/lists/${l.id}`} className="chip">
-                    {l.name}
+                  <Link key={l.id} to={`/lists/${l.id}`} className="chip max-w-full min-w-0">
+                    <span className="truncate">{l.name}</span>
                   </Link>
                 ))}
               </div>

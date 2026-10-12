@@ -165,12 +165,12 @@ export function PageHeader({
   right?: ReactNode
 }) {
   return (
-    <div className="mb-5 flex items-end justify-between gap-3">
-      <div>
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+      <div className="min-w-0">
         <h1 className="serif text-2xl font-semibold tracking-wide text-ink md:text-3xl">{title}</h1>
         {sub && <p className="mt-1 text-sm text-faint">{sub}</p>}
       </div>
-      {right && <div className="flex shrink-0 items-center gap-2">{right}</div>}
+      {right && <div className="ml-auto flex flex-wrap items-center justify-end gap-2">{right}</div>}
     </div>
   )
 }

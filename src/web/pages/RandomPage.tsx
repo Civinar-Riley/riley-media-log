@@ -9,13 +9,17 @@ import { CategoryBadge, CoverImage, EmptyState, Loading, RatingStars, StatusBadg
 export default function RandomPage() {
   const qc = useQueryClient()
   const { labelOf } = useCategories()
-  const [scope, setScope] = useState<'want' | 'all'>('want')
-  const [seed, setSeed] = useState(0)
+  // 范围持久化：从详情页返回时不丢；默认「只摇想看」
+  const [scope, setScope] = useState<'want' | 'all'>(() =>
+    localStorage.getItem('rml-random-scope') === 'all' ? 'all' : 'want'
+  )
 
   const q = useQuery({
-    queryKey: ['random', scope, seed],
+    queryKey: ['random', scope],
     queryFn: () => api.random(scope === 'want' ? { status: ['want'] } : {}),
     retry: false,
+    // 返回页面时保持同一条结果（key 只含范围，不随重挂变化）；重摇走 refetch
+    staleTime: Infinity,
   })
 
   const markDone = useMutation({
@@ -24,7 +28,7 @@ export default function RandomPage() {
       qc.invalidateQueries({ queryKey: ['items'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
       qc.invalidateQueries({ queryKey: ['status-counts'] })
-      setSeed((s) => s + 1) // 顺手摇下一个
+      q.refetch() // 顺手摇下一个
     },
   })
 
@@ -37,10 +41,10 @@ export default function RandomPage() {
         <h1 className="serif text-3xl font-semibold tracking-wide text-ink">今晚看什么？</h1>
         <p className="mt-2 text-sm text-faint">从下面的范围里随机摇一个，治好选择困难症</p>
         <div className="mt-3 inline-flex gap-1.5">
-          <button className={`chip ${scope === 'want' ? 'chip-on' : ''}`} onClick={() => { setScope('want'); setSeed((s) => s + 1) }}>
+          <button className={`chip ${scope === 'want' ? 'chip-on' : ''}`} onClick={() => { setScope('want'); localStorage.setItem('rml-random-scope', 'want') }}>
             只摇想看
           </button>
-          <button className={`chip ${scope === 'all' ? 'chip-on' : ''}`} onClick={() => { setScope('all'); setSeed((s) => s + 1) }}>
+          <button className={`chip ${scope === 'all' ? 'chip-on' : ''}`} onClick={() => { setScope('all'); localStorage.setItem('rml-random-scope', 'all') }}>
             全部条目
           </button>
         </div>
@@ -88,7 +92,7 @@ export default function RandomPage() {
             ) : null}
             {item.review && <p className="text-sm text-soft">{item.review}</p>}
             <div className="flex flex-wrap justify-center gap-2 pt-2">
-              <button className="btn btn-primary" onClick={() => setSeed((s) => s + 1)}>
+              <button className="btn btn-primary" onClick={() => q.refetch()}>
                 <Dices className="h-4 w-4" />
                 再摇一个
               </button>
