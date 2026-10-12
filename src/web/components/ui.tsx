@@ -215,11 +215,23 @@ export function Pagination({
   onPage: (p: number) => void
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize))
+  // 点省略号弹出跳页输入框：记录被点开的是第几个省略号
+  const [jumpAt, setJumpAt] = useState<number | null>(null)
+  const [jumpText, setJumpText] = useState('')
   if (pages <= 1) return null
   const nums: (number | '…')[] = []
   for (let i = 1; i <= pages; i++) {
     if (i === 1 || i === pages || Math.abs(i - page) <= 1) nums.push(i)
     else if (nums[nums.length - 1] !== '…') nums.push('…')
+  }
+  const closeJump = () => {
+    setJumpAt(null)
+    setJumpText('')
+  }
+  const submitJump = () => {
+    const n = Number(jumpText.trim())
+    if (Number.isFinite(n)) onPage(Math.min(pages, Math.max(1, Math.trunc(n))))
+    closeJump()
   }
   return (
     <div className="mt-6 flex items-center justify-center gap-1.5 text-sm">
@@ -228,8 +240,48 @@ export function Pagination({
       </button>
       {nums.map((n, i) =>
         n === '…' ? (
-          <span key={`e${i}`} className="px-1 text-faint">
-            …
+          <span key={`e${i}`} className="relative">
+            <button
+              className={`h-8 min-w-8 rounded-md px-1.5 transition ${
+                jumpAt === i ? 'bg-muted text-ink' : 'text-faint hover:bg-muted hover:text-ink'
+              }`}
+              title="跳转到指定页"
+              onClick={() => {
+                setJumpAt(i)
+                setJumpText(String(page))
+              }}
+            >
+              …
+            </button>
+            {jumpAt === i && (
+              <span className="card absolute bottom-full left-1/2 z-20 mb-1.5 flex -translate-x-1/2 items-center gap-1.5 p-1.5 shadow-lg">
+                <input
+                  autoFocus
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={pages}
+                  className="input h-8 w-20"
+                  value={jumpText}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setJumpText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      submitJump()
+                    } else if (e.key === 'Escape') {
+                      closeJump()
+                    }
+                  }}
+                  onBlur={() => setTimeout(closeJump, 150)}
+                  placeholder="页码"
+                />
+                <button className="btn btn-primary h-8 px-2.5" onClick={submitJump}>
+                  跳转
+                </button>
+              </span>
+            )}
           </span>
         ) : (
           <button
