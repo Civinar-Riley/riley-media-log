@@ -460,9 +460,19 @@ function DataSourceSection() {
   )
 }
 
+/** 演示站禁用区块的占位（服务端也会拦截，这里只是不给出入口） */
+function DemoDisabled({ title }: { title: string }) {
+  return (
+    <section className="card p-5">
+      <h2 className="serif mb-1 font-medium text-ink">{title}</h2>
+      <p className="text-xs text-faint">演示站已禁用该操作（数据每两天自动重置）。想搭一个自己的？仓库里有完整部署指南。</p>
+    </section>
+  )
+}
+
 export default function SettingsPage() {
   const { theme, followSystem, setTheme, setFollowSystem } = useTheme()
-  const { logout, hasApiToken } = useAuth()
+  const { logout, hasApiToken, demo } = useAuth()
   const navigate = useNavigate()
 
   return (
@@ -504,16 +514,16 @@ export default function SettingsPage() {
       </section>
 
       {/* 类别管理 */}
-      <CategoryManager />
+      {demo ? <DemoDisabled title="类别管理" /> : <CategoryManager />}
 
       {/* 人名别名 */}
-      <AliasManager />
+      {demo ? <DemoDisabled title="人名别名" /> : <AliasManager />}
 
       {/* 自动补全数据源 */}
       <DataSourceSection />
 
       {/* 登录密码 */}
-      <PasswordChanger />
+      {demo ? <DemoDisabled title="登录密码" /> : <PasswordChanger />}
 
       {/* 导出 */}
       <section className="card p-5">

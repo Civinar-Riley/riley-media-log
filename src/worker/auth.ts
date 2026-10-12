@@ -141,6 +141,7 @@ authRoutes.get('/status', async (c) => {
   return c.json({
     authenticated: await verifySession(token, c.env.SESSION_SECRET),
     has_api_token: Boolean(c.env.API_TOKEN),
+    demo: c.env.DEMO_MODE === 'true',
   })
 })
 

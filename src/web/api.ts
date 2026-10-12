@@ -70,6 +70,7 @@ export function filtersToQuery(f: ItemFilters): string {
 export interface AuthStatus {
   authenticated: boolean
   has_api_token: boolean
+  demo: boolean
 }
 
 export const api = {

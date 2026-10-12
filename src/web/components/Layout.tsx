@@ -43,7 +43,7 @@ function ThemeQuickToggle() {
 }
 
 export default function Layout() {
-  const { logout } = useAuth()
+  const { logout, demo } = useAuth()
   const navigate = useNavigate()
 
   return (
@@ -108,6 +108,12 @@ export default function Layout() {
       </header>
 
       <main className="pb-24 md:pb-10 md:pl-52">
+        {demo && (
+          <div className="border-b border-line bg-brand/10 px-4 py-2 text-center text-xs text-soft md:px-8">
+            🎪 演示站 · 数据每两天自动重置 · 登录密码 <code className="font-mono text-ink">demo</code> ·
+            改密码与设置类操作已禁用
+          </div>
+        )}
         <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">
           <Outlet />
         </div>

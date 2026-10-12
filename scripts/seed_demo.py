@@ -15,12 +15,13 @@ import sys
 import urllib.error
 import urllib.request
 
-from common import is_local, load_token
+from common import install_proxy, is_local, load_token
 
 parser = argparse.ArgumentParser(description='灌入演示数据')
 parser.add_argument('--base', default='http://localhost:5173', help='目标地址（默认本地 dev）')
 parser.add_argument('--token', default=None, help='API_TOKEN（默认读 .dev.vars）')
 parser.add_argument('--allow-remote', action='store_true', help='允许对非本地地址执行（会真实写数据！）')
+parser.add_argument('--proxy', default=None, help='HTTP 代理（如 http://127.0.0.1:<你的代理端口>），访问被墙站点时使用')
 args = parser.parse_args()
 
 BASE = args.base.rstrip('/')
@@ -28,6 +29,7 @@ if not is_local(BASE) and not args.allow_remote:
     print(f'拒绝执行：目标 {BASE} 不是本地环境。灌数据会真实写入，确认请显式加 --allow-remote')
     sys.exit(2)
 print(f'目标环境：{BASE}' + ('' if is_local(BASE) else '（远程，真实写入！）'))
+install_proxy(args.proxy)
 
 TOKEN = args.token or load_token()
 if not TOKEN:

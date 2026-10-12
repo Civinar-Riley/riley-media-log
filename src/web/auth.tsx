@@ -7,6 +7,7 @@ interface AuthCtx {
   loading: boolean
   authed: boolean
   hasApiToken: boolean
+  demo: boolean
   login: (password: string) => Promise<void>
   logout: () => Promise<void>
 }
@@ -26,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: isLoading,
     authed: data?.authenticated ?? false,
     hasApiToken: data?.has_api_token ?? false,
+    demo: data?.demo ?? false,
     login: async (password) => {
       await api.login(password)
       await qc.invalidateQueries({ queryKey: ['auth-status'] })

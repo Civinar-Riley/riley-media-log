@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Pencil, X } from 'lucide-react'
 import { api } from '../api'
+import { useAuth } from '../auth'
 import { Loading, PageHeader } from '../components/ui'
 
 const FIELDS = [
@@ -16,6 +17,7 @@ const FIELDS = [
 type FieldKey = (typeof FIELDS)[number]['key']
 
 function FieldPanel({ field }: { field: FieldKey }) {
+  const { demo } = useAuth()
   const qc = useQueryClient()
   const valuesQ = useQuery({ queryKey: ['field-values', field], queryFn: () => api.fieldValues(field) })
   const [editing, setEditing] = useState<string | null>(null)
@@ -73,16 +75,18 @@ function FieldPanel({ field }: { field: FieldKey }) {
               <span className="truncate text-sm text-ink">{v}</span>
               <span className="shrink-0 text-xs text-faint">{count} 条</span>
             </div>
-            <button
-              className="btn btn-ghost h-7 shrink-0 px-2 opacity-0 transition group-hover:opacity-100"
-              onClick={() => {
-                setEditing(v)
-                setNext(v)
-              }}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              改名 / 合并
-            </button>
+            {!demo && (
+              <button
+                className="btn btn-ghost h-7 shrink-0 px-2 opacity-0 transition group-hover:opacity-100"
+                onClick={() => {
+                  setEditing(v)
+                  setNext(v)
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                改名 / 合并
+              </button>
+            )}
           </li>
         )
       )}
@@ -91,6 +95,7 @@ function FieldPanel({ field }: { field: FieldKey }) {
 }
 
 export default function ManageFieldsPage() {
+  const { demo } = useAuth()
   const [tab, setTab] = useState<FieldKey>('tags')
   const current = FIELDS.find((f) => f.key === tab)!
 
@@ -105,7 +110,9 @@ export default function ManageFieldsPage() {
           </button>
         ))}
       </div>
-      <p className="mb-4 text-xs text-faint">{current.hint}。改名立即生效，片单与统计同步刷新。</p>
+      <p className="mb-4 text-xs text-faint">
+        {current.hint}。{demo ? '演示站已禁用改名操作。' : '改名立即生效，片单与统计同步刷新。'}
+      </p>
 
       <FieldPanel key={tab} field={tab} />
     </div>

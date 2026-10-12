@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, demo } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [password, setPassword] = useState('')
@@ -41,6 +41,13 @@ export default function LoginPage() {
           </div>
           <p className="text-sm text-faint">看过的、想看的，都记在这里</p>
         </div>
+        {demo && (
+          <p className="mb-5 rounded-md border border-line bg-muted px-3 py-2 text-center text-xs text-soft">
+            🎪 这是演示站 · 访问密码：<code className="font-mono text-ink">demo</code>
+            <br />
+            数据每两天自动重置，随便玩
+          </p>
+        )}
         <label className="label mb-1.5 block" htmlFor="password">
           访问密码
         </label>

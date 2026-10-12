@@ -1,0 +1,29 @@
+name: Demo Reset
+
+# 演示站数据重置：每两天一次（UTC 20:00 = 北京时间 04:00），也可手动触发
+on:
+  schedule:
+    - cron: '0 20 */2 * *'
+  workflow_dispatch:
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 重置演示站数据（清库 → 重灌 → 补封面）
+        run: node scripts/demo.mjs reset
+        env:
+          CLOUDFLARE_ENV: demo
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEMO_API_TOKEN: ${{ secrets.DEMO_API_TOKEN }}
