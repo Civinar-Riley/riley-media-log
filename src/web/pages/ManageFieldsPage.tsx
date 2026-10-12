@@ -77,7 +77,7 @@ function FieldPanel({ field }: { field: FieldKey }) {
             </div>
             {!demo && (
               <button
-                className="btn btn-ghost h-7 shrink-0 px-2 opacity-0 transition group-hover:opacity-100"
+                className="btn btn-ghost h-7 shrink-0 px-2 transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100"
                 onClick={() => {
                   setEditing(v)
                   setNext(v)

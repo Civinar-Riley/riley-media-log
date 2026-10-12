@@ -225,7 +225,7 @@ export default function ItemDetailPage() {
                       {v.comment && <span className="ml-2 text-sm break-words text-soft">{v.comment}</span>}
                     </div>
                     <button
-                      className="btn btn-danger h-7 px-2 opacity-0 transition group-hover:opacity-100"
+                      className="btn btn-danger h-7 shrink-0 px-2 transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100"
                       onClick={() => delViewing.mutate(v.id)}
                       title="删除这条观看记录"
                     >

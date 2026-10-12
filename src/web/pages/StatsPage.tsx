@@ -123,7 +123,7 @@ export default function StatsPage() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Kpi label="记录总数" value={stats.kpi.total} />
         <Kpi label="看过" value={stats.kpi.done} hint={`在看 ${stats.kpi.watching} · 弃 ${stats.kpi.dropped}`} />
-        <Kpi label="想看" value={stats.kpi.want} hint="待 Enjoy 清单" />
+        <Kpi label="想看" value={stats.kpi.want} hint="待看清单" />
         <Kpi label={`今年看完`} value={stats.kpi.done_this_year} hint="按观看日期统计" />
       </div>
 
@@ -203,7 +203,7 @@ export default function StatsPage() {
                 className="cursor-pointer"
                 onClick={(_: unknown, index: number) => {
                   const r = stats.by_rating[index]?.rating
-                  if (r) go(`rating_min=${r}`)
+                  if (r) go(`rating_min=${r}&rating_max=${r}`)
                 }}
               />
             </BarChart>

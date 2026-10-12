@@ -72,7 +72,7 @@ function ItemPicker({
                     : 'border-line text-soft hover:border-brand/50'
               }`}
             >
-              <span className="truncate">
+              <span className="min-w-0 truncate">
                 {it.title}
                 <span className="ml-2 text-xs text-faint">
                   {[it.year, it.category].filter(Boolean).join(' · ')}
@@ -133,15 +133,15 @@ export default function ListDetailPage() {
 
   return (
     <div>
-      <div className="mb-5 flex items-end justify-between gap-3">
-        <div>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+        <div className="min-w-0">
           <Link to="/lists" className="text-xs text-faint hover:text-brand">
             ← 全部清单
           </Link>
-          <h1 className="serif mt-1 text-2xl font-semibold text-ink md:text-3xl">{list.name}</h1>
-          {list.description && <p className="mt-1 text-sm text-faint">{list.description}</p>}
+          <h1 className="serif mt-1 text-2xl font-semibold break-words text-ink md:text-3xl">{list.name}</h1>
+          {list.description && <p className="mt-1 text-sm break-words text-faint">{list.description}</p>}
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <button className="btn btn-primary" onClick={() => setPickerOpen(true)}>
             <Plus className="h-4 w-4" />
             添加条目
@@ -159,7 +159,7 @@ export default function ListDetailPage() {
             <div key={it.id} className="group relative">
               <ItemCard item={it} index={i} />
               <button
-                className="absolute top-1.5 right-1.5 z-10 hidden h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition group-hover:flex"
+                className="absolute top-1.5 right-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100"
                 title="从清单移出（不删除条目）"
                 onClick={() => removeItem.mutate(it.id)}
               >
