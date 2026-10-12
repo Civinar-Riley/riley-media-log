@@ -84,6 +84,12 @@
 
 > **完整部署文档 → [docs/部署指南.md](./docs/部署指南.md)**。部署到自己的 Cloudflare、push 即自动部署（GitHub Actions）、Excel 数据导入、日常升级与部署排错都在那里，每一步附验证方法。本节只给最快的本地体验路径。
 
+**先看在线演示**：[logdemo.civinar.eu.cc](https://logdemo.civinar.eu.cc)（密码 `demo`）——公开可写、随便玩，数据每两天自动重置。
+
+**一键部署到自己的 Cloudflare**（自动创建数据库，密钥按提示填写）：
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Civinar-Riley/riley-media-log)
+
 **环境要求**
 
 - Node.js 22 与 npm（与 CI 配置一致）
@@ -116,7 +122,7 @@
 | `BANGUMI_TOKEN` | `.dev.vars` / `wrangler secret` | 可选，自动补全（书漫类）的 Bangumi Token，缺省匿名可用 |
 | `database_id` | `wrangler.jsonc` | 部署到线上前替换为 `wrangler d1 create` 返回的真实 ID |
 
-> ⚠️ **`wrangler.jsonc` 里的 `database_id` 是作者自己的真实 ID**：部署到你自己的 Cloudflare 前必须替换（本地 dev 不受影响），详见指南「路线 B」第 2 步。
+> ⚠️ **顶层 `database_id` 是占位符**：一键部署按钮会在你的 Cloudflare 账号里自动创建数据库并替换它；手动部署请先 `npx wrangler d1 create riley-media-log` 再替换该值，详见指南「路线 B」。
 > ⚠️ **本地与线上是两套密钥**：`.dev.vars` 只作用于本地 dev，线上要另用 `wrangler secret put` 配置，互不影响。
 > ⚠️ **所有密钥绝不入库**：`.dev.vars`、`*.xlsm`、`data/` 均已 gitignore，切勿把密码或个人数据提交进仓库。
 
@@ -177,7 +183,7 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 ## 📁 仓库结构
 
 ```text
-├── .github/workflows/     # GitHub Actions：push main 自动迁移数据库并部署
+├── .github/workflows/     # push main 自动部署双站；演示站每两天自动重置
 ├── docs/
 │   ├── 部署指南.md         # 完整部署文档（三条路线 / 密钥 / 数据导入 / 升级）
 │   └── screenshots/       # README 截图（演示数据）
@@ -187,7 +193,9 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 │   ├── import_excel.py    # Excel → SQL 导入脚本（--input 指定文件）
 │   ├── backfill.py        # 元数据批量回填（变体标题重试 + 报告整批撤回）
 │   ├── item_audit.py      # 条目审计（快照 / 对比 / 统计 / 补全流水，只读）
-│   ├── seed_demo.py       # 演示数据种子（虚构片名，供截图或体验）
+│   ├── seed_demo.py       # 演示数据种子（真实热门片名，供演示站与截图）
+│   ├── demo.mjs           # 演示站运维（deploy / reset 一键重置）
+│   ├── demo_wipe.sql      # 演示站清库脚本
 │   └── qa_sweep.py        # API 回归测试（以当前库为基准，任意数据集可跑）
 ├── public/                # PWA manifest、图标、Service Worker
 ├── src/
@@ -195,7 +203,8 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 │   ├── worker/            # Hono 后端：认证、条目、清单、字段、自动补全、统计、导出
 │   └── web/               # React 前端：页面、组件、主题系统
 ├── 防踩坑.md              # 开发与部署中真实踩过的坑与解法
-├── wrangler.jsonc         # Cloudflare 配置（Worker + 静态资产 + D1）
+├── .dev.vars.example      # 本地密钥示例（一键部署流程也会读取它收集密钥）
+├── wrangler.jsonc         # Cloudflare 配置（顶层=一键部署模板；env.prod / env.demo 双站）
 └── vite.config.ts
 ```
 
@@ -203,6 +212,7 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 
 | 问题 | 回答 |
 | :--- | :--- |
+| 想先看看再决定？ | 在线演示：[logdemo.civinar.eu.cc](https://logdemo.civinar.eu.cc)（密码 `demo`），公开可写、每两天自动重置，随便折腾 |
 | 想部署一个自己用？ | 完整步骤见 [docs/部署指南.md](./docs/部署指南.md)：本地体验、部署到 Cloudflare、push 自动部署三条路线，每步附验证方法 |
 | 数据存在哪？会丢吗？ | 在你自己账号的 Cloudflare D1 里；随时可在设置页导出 CSV/JSON 备份 |
 | 忘记密码怎么办？ | 应用内改过密码后忘了：`npx wrangler secret put AUTH_PASSWORD` 设置的应急密钥仍可登录（两把钥匙任一有效），登录后可在设置页重新设置密码 |
