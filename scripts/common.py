@@ -21,6 +21,11 @@ def load_token(path='.dev.vars'):
         return ''
 
 
+def is_local(base):
+    """目标地址是否本地 dev（localhost / 127.0.0.1 / ::1）。"""
+    return (urllib.parse.urlparse(base).hostname or '') in ('localhost', '127.0.0.1', '::1')
+
+
 def install_proxy(proxy):
     """proxy 形如 http://127.0.0.1:<你的代理端口>；传空则不设代理。"""
     if proxy:

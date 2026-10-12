@@ -1,18 +1,38 @@
 # -*- coding: utf-8 -*-
-"""灌入演示数据（全部为虚构片名与人名），用于截图或本地体验。
+"""灌入演示数据（全部为虚构片名与人名），用于截图、本地体验或演示站。
 
 用法：先 npm run dev，再 python scripts/seed_demo.py
-提示：做演示截图时建议用独立数据库——把 wrangler.jsonc 的 database_id 临时改成
-      "demo-screenshots"，重启 dev 并 npm run db:migrate:local 后再运行本脚本，
-      这样不会污染真实数据（真实库的本地文件按原 database_id 保存，改回即恢复）。
+     往远程演示站灌数据必须显式加 --allow-remote：
+     python scripts/seed_demo.py --base https://logdemo.example.com --token xxx --allow-remote
+
+提示：本地做演示截图建议用独立数据库（把 wrangler.jsonc 的 database_id 临时改成
+      "demo-screenshots"，重启 dev 并 npm run db:migrate:local 后再运行本脚本）；
+      线上演示站的重置请用 npm run demo:reset（先清库再灌，避免叠加重复数据）。
 """
+import argparse
 import json
 import sys
 import urllib.error
 import urllib.request
 
-BASE = 'http://localhost:5173'
-TOKEN = open('.dev.vars', encoding='utf-8').read().split('API_TOKEN=')[1].splitlines()[0].strip()
+from common import is_local, load_token
+
+parser = argparse.ArgumentParser(description='灌入演示数据')
+parser.add_argument('--base', default='http://localhost:5173', help='目标地址（默认本地 dev）')
+parser.add_argument('--token', default=None, help='API_TOKEN（默认读 .dev.vars）')
+parser.add_argument('--allow-remote', action='store_true', help='允许对非本地地址执行（会真实写数据！）')
+args = parser.parse_args()
+
+BASE = args.base.rstrip('/')
+if not is_local(BASE) and not args.allow_remote:
+    print(f'拒绝执行：目标 {BASE} 不是本地环境。灌数据会真实写入，确认请显式加 --allow-remote')
+    sys.exit(2)
+print(f'目标环境：{BASE}' + ('' if is_local(BASE) else '（远程，真实写入！）'))
+
+TOKEN = args.token or load_token()
+if not TOKEN:
+    print('找不到 API_TOKEN：请加 --token 或确认 .dev.vars 存在', file=sys.stderr)
+    sys.exit(1)
 
 
 def api(path, method='GET', body=None):
@@ -20,7 +40,11 @@ def api(path, method='GET', body=None):
         BASE + path,
         method=method,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN},
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + TOKEN,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) riley-media-log-seed',
+        },
     )
     try:
         r = urllib.request.urlopen(req)

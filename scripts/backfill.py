@@ -78,6 +78,7 @@ def main():
     if not token:
         print('找不到 API_TOKEN：请加 --token 或确认 .dev.vars 存在', file=sys.stderr)
         sys.exit(1)
+    print(f'目标环境：{args.base}')
 
     # 撤回模式
     if args.undo:

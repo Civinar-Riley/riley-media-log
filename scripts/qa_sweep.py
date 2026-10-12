@@ -1,18 +1,38 @@
 # -*- coding: utf-8 -*-
-"""书影集 API 回归测试（本地 dev 环境运行，对任意数据集均可跑）
+"""书影集 API 回归测试（对任意数据集均可跑）
 
 用法：npm run dev 起着，然后 python scripts/qa_sweep.py
-依赖 .dev.vars 里的 API_TOKEN。断言以当前库的总数与分布为基准（不写死具体条数），
-会创建临时条目/清单/别名并自动清理，不碰真实数据。
+     打远程站点必须显式加 --allow-remote（会真实创建/删除数据，慎用）：
+     python scripts/qa_sweep.py --base https://logdemo.example.com --allow-remote
+
+依赖 .dev.vars 里的 API_TOKEN 与 AUTH_PASSWORD。断言以当前库的总数与分布为基准（不写死具体条数），
+会创建临时条目/清单/别名并自动清理；启动时会自动清理上次异常退出遗留的「QA」前缀测试条目。
 """
+import argparse
 import json
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE = 'http://localhost:5173'
-TOKEN = open('.dev.vars', encoding='utf-8').read().split('API_TOKEN=')[1].splitlines()[0].strip()
+from common import is_local, load_token
+
+parser = argparse.ArgumentParser(description='书影集 API 回归测试')
+parser.add_argument('--base', default='http://localhost:5173', help='目标地址（默认本地 dev）')
+parser.add_argument('--token', default=None, help='API_TOKEN（默认读 .dev.vars）')
+parser.add_argument('--allow-remote', action='store_true', help='允许对非本地地址执行（会真实写数据！）')
+args = parser.parse_args()
+
+BASE = args.base.rstrip('/')
+if not is_local(BASE) and not args.allow_remote:
+    print(f'拒绝执行：目标 {BASE} 不是本地环境。回归测试会创建并删除数据，确认请显式加 --allow-remote')
+    sys.exit(2)
+print(f'目标环境：{BASE}' + ('' if is_local(BASE) else '（远程，真实写入！）'))
+
+TOKEN = args.token or load_token()
+if not TOKEN:
+    print('找不到 API_TOKEN：请加 --token 或确认 .dev.vars 存在', file=sys.stderr)
+    sys.exit(1)
 PASS, FAIL = 0, []
 
 
@@ -35,7 +55,11 @@ def api(path, method='GET', body=None, token=TOKEN, raw=False):
         BASE + path,
         method=method,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={'Content-Type': 'application/json', **({'Authorization': 'Bearer ' + token} if token else {})},
+        headers={
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) riley-media-log-qa',
+            **({'Authorization': 'Bearer ' + token} if token else {}),
+        },
     )
     try:
         r = urllib.request.urlopen(req)
@@ -52,6 +76,17 @@ st, base = api('/api/items?page_size=1')
 if st != 200:
     print('无法连接本地服务，请先 npm run dev')
     sys.exit(1)
+
+# 自愈：清理上次异常退出遗留的「QA」前缀测试条目（本项目测试数据全部以 QA 开头）
+_, left = api('/api/items?q=QA&page_size=100')
+stale = [i for i in left['items'] if i['title'].startswith('QA')]
+if stale:
+    print(f'发现 {len(stale)} 条历史遗留测试条目，先清理：')
+    for i in stale:
+        api(f"/api/items/{i['id']}", 'DELETE')
+        print(f"  已清理 {i['id']} {i['title']}")
+    _, base = api('/api/items?page_size=1')
+
 TOTAL = base['total']
 _, fx = api('/api/fields/facets')
 CAT = dict(fx['categories'])
