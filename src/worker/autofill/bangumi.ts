@@ -110,16 +110,21 @@ export async function bgmSearch(
   }))
 }
 
-/** infobox 取值：值可能是字符串或 {v: string} 数组 */
+/** infobox 取值：值可能是字符串或 {v: string} 数组；
+ *  去掉「（掲載…／KADOKAWA刊）」这类括号补充说明——只保留主名称 */
 function infoboxValue(raw: BgmRaw, keys: string[]): string[] {
+  const strip = (v: string) => v.replace(/[（(].*$/, '').trim()
   for (const item of raw.infobox ?? []) {
     if (!keys.includes(item.key)) continue
     const v = item.value
-    if (typeof v === 'string') return [v]
+    if (typeof v === 'string') return [strip(v)].filter(Boolean)
     if (Array.isArray(v)) {
-      return v.map((x) => (typeof x === 'string' ? x : (x as { v: string }).v)).filter(Boolean)
+      return v
+        .map((x) => (typeof x === 'string' ? x : (x as { v: string }).v))
+        .map(strip)
+        .filter(Boolean)
     }
-    if (v) return [String(v)]
+    if (v) return [strip(String(v))].filter(Boolean)
   }
   return []
 }

@@ -32,7 +32,7 @@ function PeopleRow({ label, people, param, modeParam }: { label: string; people:
       <span className="label mr-1">{label}</span>
       {people.map((p) => (
         <Link key={p} to={`/?${param}=${encodeURIComponent(p)}&${modeParam}=any`} className="chip max-w-full min-w-0">
-          <span className="truncate">{p}</span>
+          <span className="min-w-0 truncate">{p}</span>
         </Link>
       ))}
     </div>
@@ -133,8 +133,8 @@ export default function ItemDetailPage() {
           </div>
         </div>
 
-        {/* 右：信息 */}
-        <div className="anim space-y-4" style={{ animationDelay: '60ms' }}>
+        {/* 右：信息（min-w-0 防止超长内容撑宽栅格列导致整页横向滚动） */}
+        <div className="anim min-w-0 space-y-4" style={{ animationDelay: '60ms' }}>
           <div>
             <h2 className="serif text-2xl font-semibold break-words text-ink md:text-3xl">{item.title}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -178,7 +178,7 @@ export default function ItemDetailPage() {
                   <span className="label mr-1">标签</span>
                   {item.tags.map((t) => (
                     <Link key={t} to={`/?tags=${encodeURIComponent(t)}&tag_mode=any`} className="chip max-w-full min-w-0">
-                      <span className="truncate">{t}</span>
+                      <span className="min-w-0 truncate">{t}</span>
                     </Link>
                   ))}
                 </div>
@@ -245,7 +245,7 @@ export default function ItemDetailPage() {
               <div className="flex flex-wrap gap-1.5">
                 {item.lists.map((l) => (
                   <Link key={l.id} to={`/lists/${l.id}`} className="chip max-w-full min-w-0">
-                    <span className="truncate">{l.name}</span>
+                    <span className="min-w-0 truncate">{l.name}</span>
                   </Link>
                 ))}
               </div>
