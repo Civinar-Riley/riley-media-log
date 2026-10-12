@@ -27,7 +27,7 @@
 - **随便筛**：十一个维度任意组合筛选，多选字段支持「任一匹配 / 同时命中全部」两种模式；
 - **放心里**：数据存在你自己的 Cloudflare D1 里，界面有密码锁，仓库与截图不含任何个人条目数据；
 - **零成本**：Workers 免费额度对个人用量绰绰有余，无需服务器；
-- **从 Excel 无缝迁移**：自带导入脚本，查重、拼音索引一条龙。
+- **导入自己的存量资料**：按 [JSON 模板](./docs/import-template.json) 整理后一条命令导入——除标题外都可以不填，缺的信息上线后用「自动补全」补齐；拼音索引自动生成。
 
 技术栈：Hono（Workers API）+ React 19 + Vite + Tailwind CSS 4 + Cloudflare D1，单 Worker 同时服务 API 与前端页面。
 
@@ -82,7 +82,7 @@
 
 ## 📦 安装
 
-> **完整部署文档 → [docs/部署指南.md](./docs/部署指南.md)**。部署到自己的 Cloudflare、push 即自动部署（GitHub Actions）、Excel 数据导入、日常升级与部署排错都在那里，每一步附验证方法。本节只给最快的本地体验路径。
+> **完整部署文档 → [docs/部署指南.md](./docs/部署指南.md)**。部署到自己的 Cloudflare、push 即自动部署（GitHub Actions）、数据导入（JSON 模板）、日常升级与部署排错都在那里，每一步附验证方法。本节只给最快的本地体验路径。
 
 **先看在线演示**：[logdemo.civinar.eu.cc](https://logdemo.civinar.eu.cc)（密码 `demo`）——公开可写、随便玩，数据每两天自动重置。
 
@@ -93,7 +93,7 @@
 **环境要求**
 
 - Node.js 22 与 npm（与 CI 配置一致）
-- Python 3 及 `openpyxl`、`pypinyin`（仅 Excel 导入需要）
+- Python 3（可选。JSON 导入、演示数据、回归测试脚本用它，不需要额外依赖库）
 - 一个 Cloudflare 账号（免费套餐即可，仅部署上线需要）
 
 **三条部署路线**
@@ -130,7 +130,7 @@
 
 | 场景 | 操作 |
 | :--- | :--- |
-| **导入 Excel 存量记录** | `python scripts/import_excel.py --input 你的表.xlsx` 生成 `data/import.sql` 与对账报告 → `npx wrangler d1 execute riley-media-log --local --file data/import.sql`（线上库加 `--remote`）。脚本按表头关键词识别列、按「动漫/电影/剧集/综艺/小说」工作表读取（你的表头用词不同时，调整脚本里 detect_columns 的关键词即可）：进度「已阅」→看过、数字→在看+进度、小说表「类型=漫画」自动归入漫画、作者进作者字段、状态进完结状态；按「标题+年份+类别」查重打标 |
+| **导入自己的存量资料** | 照 [docs/import-template.json](./docs/import-template.json) 把资料整理成 JSON（除标题外都可以不填，缺的之后用「自动补全」补）→ `python scripts/import_json.py --input 你的资料.json`（导入线上站点加 `--base https://你的站点 --token xxx --allow-remote`）；默认按「标题+年份+类别」查重跳过已有条目 |
 | **日常记一笔** | 右上角「记一笔」→ 填个标题就能保存，其余字段随时补 |
 | **补记多年前的老片** | 记一笔 → 状态选「看过」→ 填年份 → 观后感写两句 → 顺手打个星 |
 | **记二刷** | 打开条目详情 → 观看流水里选日期、写一句感受 → 「记一次观看」 |
@@ -186,11 +186,13 @@ curl -H "Authorization: Bearer <你的API_TOKEN>" "https://<你的域名>/api/it
 ├── .github/workflows/     # push main 自动部署双站；演示站每两天自动重置
 ├── docs/
 │   ├── 部署指南.md         # 完整部署文档（三条路线 / 密钥 / 数据导入 / 升级）
+│   ├── import-template.json # 数据导入的 JSON 模板
 │   └── screenshots/       # README 截图（演示数据）
 ├── migrations/            # D1 表结构迁移（只追加，不修改历史）
 ├── scripts/
 │   ├── common.py          # 脚本公共客户端（令牌 / 代理 / 翻页取全）
-│   ├── import_excel.py    # Excel → SQL 导入脚本（--input 指定文件）
+│   ├── import_json.py     # JSON 资料导入（模板见 docs/import-template.json）
+│   ├── import_excel.py    # Excel → SQL（作者早期的迁移脚本，按需自改表头关键词）
 │   ├── backfill.py        # 元数据批量回填（变体标题重试 + 报告整批撤回）
 │   ├── item_audit.py      # 条目审计（快照 / 对比 / 统计 / 补全流水，只读）
 │   ├── seed_demo.py       # 演示数据种子（真实热门片名，供演示站与截图）

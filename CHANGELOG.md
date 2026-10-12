@@ -9,6 +9,7 @@
 - **自动补全（双源）**：条目详情页一键从 TMDB（影视）/ Bangumi（书漫）拉取封面、年份、地区、类型、导演、主演、作者、总集数；只填空字段（可勾选覆盖已有）、支持勾选与一键撤回（快照日志）；外部评分单独展示；批量回填脚本 `scripts/backfill.py`（交互/自动模式 + 报告 + 整批撤回）
 - **批量脚本通用化**：抽公共 API 客户端 `scripts/common.py`（令牌 / 代理 / 翻页取全）；`backfill.py` 支持翻页全量、`--missing none`、标题变体重试（去季数 / 括号别名 / 英文副标题）与忽略年份兜底搜索（preview 接口新增可选 `year: null`）；新增只读审计脚本 `scripts/item_audit.py`（快照 / 对比 / 空值统计 / 补全流水）
 - **在线演示与双站部署**：公开演示站（演示模式拦截改密码与设置类写操作、公开可写、每两天自动重置，`scripts/demo.mjs` 一键重置）；**Deploy to Cloudflare 一键部署按钮**；wrangler 多环境（顶层=模板占位符、`env.prod` / `env.demo`），本机 `.env` 一行 `CLOUDFLARE_ENV` 自动选环境，本地开发数据零迁移
+- **通用 JSON 导入**：`scripts/import_json.py` + `docs/import-template.json`——除标题外所有字段可留空（缺的线上自动补全），类别 / 状态 / 完结支持中文写法，默认按「标题+年份+类别」查重；文档不再突出 Excel 迁移（原脚本保留在仓库）
 - **批量脚本加固**：`qa_sweep.py` / `seed_demo.py` 拒绝对非 localhost 写入（须显式 `--allow-remote`），qa_sweep 启动自动清理遗留测试条目
 - 设置页支持修改登录密码（PBKDF2-SHA256 哈希存 D1，10 万次迭代）；Cloudflare 应急密钥（AUTH_PASSWORD）保留为忘记密码时的恢复通道，两者任一均可登录
 - 片单状态快捷条补充计数徽标，数字随当前类别页签联动（如「电影」页签下显示「看过 649」）

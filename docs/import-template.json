@@ -1,0 +1,43 @@
+{
+  "_说明": [
+    "书影集导入模板：复制这份文件改成你自己的资料，然后用",
+    "python scripts/import_json.py --input 你的文件.json 导入（导入线上站点加 --base/--token/--allow-remote）。",
+    "除 title（标题）外，所有字段都可以不填——缺的以后可以在网页上对条目点「自动补全」补齐。",
+    "category 不填默认按电影处理；中文写法：电影/剧集/动漫/综艺/小说/漫画。",
+    "status：想看（默认）/在看/看过/弃了；finish_status：完结/连载/烂尾（小说漫画用）。",
+    "regions / tags / authors / directors / actors 是数组；year、rating 等数字字段也可以写成字符串。",
+    "默认按「标题+年份+类别」查重，目标库里已存在的条目会自动跳过。"
+  ],
+  "items": [
+    {
+      "title": "示例：字段比较全的一条",
+      "category": "电影",
+      "year": 2024,
+      "season": null,
+      "status": "看过",
+      "rating": 4,
+      "progress": "",
+      "regions": ["中国大陆"],
+      "tags": ["科幻", "悬疑"],
+      "authors": [],
+      "directors": ["郭帆"],
+      "actors": ["吴京"],
+      "channel": "影院",
+      "episode_count": null,
+      "finish_status": null,
+      "cover_url": "",
+      "notes": "备注随便写",
+      "review": "观后感随便写"
+    },
+    {
+      "title": "示例：最少只填标题和状态",
+      "category": "剧集",
+      "status": "在看",
+      "progress": "看到第 8 集"
+    },
+    {
+      "title": "示例：想看，其他全留空，之后线上补全",
+      "category": "动漫"
+    }
+  ]
+}
