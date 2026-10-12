@@ -7,10 +7,13 @@
     "dev": "vite",
     "build": "npm run cf-typegen && tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit && vite build",
     "deploy": "npm run build && wrangler deploy",
+    "deploy:demo": "CLOUDFLARE_ENV=demo npm run build && wrangler deploy --env demo",
     "check": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
     "cf-typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply riley-media-log --local",
     "db:migrate:remote": "wrangler d1 migrations apply riley-media-log --remote",
+    "db:migrate:demo": "wrangler d1 migrations apply riley-media-log-demo --remote --env demo",
+    "demo:reset": "CLOUDFLARE_ENV=demo node scripts/reset_demo.mjs",
     "import:excel": "python scripts/import_excel.py",
     "import:local": "npm run import:excel && wrangler d1 execute riley-media-log --local --file data/import.sql"
   },

@@ -10,16 +10,59 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+
+  // ============================================================
+  // 顶层 = 一键部署模板（Deploy to Cloudflare 按钮读取此层）：
+  // database_id 为占位符，Cloudflare 会在部署者账号里自动创建 D1 并替换。
+  // 本仓库自己的正式站 / 演示站在下面 env.prod / env.demo 中定义。
+  // 环境选择：本机 .env 里写了 CLOUDFLARE_ENV=prod（裸命令自动走正式站）；
+  //          演示站命令加 --env demo / CLOUDFLARE_ENV=demo；CI 在 workflow 里显式指定。
+  // ============================================================
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "riley-media-log",
-      "database_id": "289e8b2c-4fbb-4b1a-b73d-c6c50d691c68",
+      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],
-  "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1
+
+  "env": {
+    // 正式站：log.civinar.eu.cc（wrangler deploy --env prod）
+    // workers_dev 显式保留：老地址/已装 PWA 仍可用（绑定自定义域后默认会关掉它）
+    "prod": {
+      "name": "riley-media-log",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "riley-media-log",
+          "database_id": "289e8b2c-4fbb-4b1a-b73d-c6c50d691c68",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "routes": [{ "pattern": "log.civinar.eu.cc", "custom_domain": true }]
+    },
+
+    // 演示站：logdemo.civinar.eu.cc，数据每两天自动重置（wrangler deploy --env demo）
+    // DEMO_MODE=true：服务端拦截「改密码 + 设置类写操作」，其余功能全放开
+    "demo": {
+      "name": "riley-media-log-demo",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "riley-media-log-demo",
+          "database_id": "70813c58-d248-437b-abd9-8e425566f0c0",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "routes": [{ "pattern": "logdemo.civinar.eu.cc", "custom_domain": true }],
+      "vars": { "DEMO_MODE": "true" }
+    }
   }
 }

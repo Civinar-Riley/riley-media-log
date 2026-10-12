@@ -1,0 +1,9 @@
+# 本地开发密钥示例：复制本文件为 .dev.vars 并填入真实值（.dev.vars 已被 gitignore）
+# 「Deploy to Cloudflare」一键部署按钮也会读取本文件，在部署流程中提示你填写这些密钥
+AUTH_PASSWORD=你的登录密码
+SESSION_SECRET=签名登录 cookie 的随机长字符串（可用 openssl rand -hex 32 生成）
+API_TOKEN=脚本调用 API 用的 Bearer 令牌（随机字符串即可）
+
+# 以下两项可选：自动补全（TMDB / Bangumi）用；不填不影响启动，只是详情页会提示未配置
+TMDB_API_KEY=TMDB v3 API Key（themoviedb.org/settings/api 申请）
+BANGUMI_TOKEN=Bangumi Access Token（next.bgm.tv/demo/access-token 生成，缺省匿名也能查公开数据）

@@ -10,4 +10,6 @@ interface Env {
   TMDB_API_KEY: string
   /** Bangumi Access Token（可选，公开接口匿名也可用），用于自动补全书漫数据 */
   BANGUMI_TOKEN: string
+  /** 演示站模式（wrangler.jsonc 的 env.demo 注入 "true"）：拦截改密码与设置类写操作 */
+  DEMO_MODE?: string
 }
