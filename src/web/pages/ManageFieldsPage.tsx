@@ -4,6 +4,7 @@ import { Check, Pencil, X } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { Loading, PageHeader } from '../components/ui'
+import { invalidateLibrary } from '../cache'
 
 const FIELDS = [
   { key: 'tags', name: '类型标签', hint: '改名会应用到所有条目；改成已存在的名字即为合并' },
@@ -22,25 +23,28 @@ function FieldPanel({ field }: { field: FieldKey }) {
   const valuesQ = useQuery({ queryKey: ['field-values', field], queryFn: () => api.fieldValues(field) })
   const [editing, setEditing] = useState<string | null>(null)
   const [next, setNext] = useState('')
+  const [error, setError] = useState('')
 
   const rename = useMutation({
     mutationFn: (from: string) => api.renameField(field, from, next.trim()),
+    onMutate: () => setError(''),
     onSuccess: () => {
       setEditing(null)
       setNext('')
-      qc.invalidateQueries({ queryKey: ['field-values', field] })
-      qc.invalidateQueries({ queryKey: ['facets'] })
-      qc.invalidateQueries({ queryKey: ['items'] })
-      qc.invalidateQueries({ queryKey: ['stats'] })
+      invalidateLibrary(qc)
     },
+    onError: (e) => setError(e instanceof Error ? e.message : '改名失败'),
   })
 
   if (valuesQ.isLoading) return <Loading />
+  if (valuesQ.isError) return <p className="card p-8 text-center text-sm text-faint">字段值加载失败，请刷新重试。</p>
   const values = valuesQ.data ?? []
   if (!values.length) return <p className="card p-8 text-center text-sm text-faint">这个字段还没有任何值。</p>
 
   return (
-    <ul className="card divide-y divide-line">
+    <div>
+      {error && <p className="mb-2 text-sm text-danger">{error}</p>}
+      <ul className="card divide-y divide-line">
       {values.map(([v, count]) =>
         editing === v ? (
           <li key={v} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
@@ -51,12 +55,12 @@ function FieldPanel({ field }: { field: FieldKey }) {
               autoFocus
               value={next}
               onChange={(e) => setNext(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && next.trim() && rename.mutate(v)}
+              onKeyDown={(e) => e.key === 'Enter' && next.trim() && next.trim() !== v && rename.mutate(v)}
               placeholder="新名称（填已有名称即合并）"
             />
             <button
               className="btn btn-primary h-8 px-2.5"
-              disabled={!next.trim() || rename.isPending}
+              disabled={!next.trim() || next.trim() === v || rename.isPending}
               onClick={() => rename.mutate(v)}
             >
               <Check className="h-3.5 w-3.5" />
@@ -77,7 +81,7 @@ function FieldPanel({ field }: { field: FieldKey }) {
             </div>
             {!demo && (
               <button
-                className="btn btn-ghost h-7 shrink-0 px-2 transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100"
+                className="btn btn-ghost h-7 shrink-0 px-2 transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                 onClick={() => {
                   setEditing(v)
                   setNext(v)
@@ -90,7 +94,8 @@ function FieldPanel({ field }: { field: FieldKey }) {
           </li>
         )
       )}
-    </ul>
+      </ul>
+    </div>
   )
 }
 

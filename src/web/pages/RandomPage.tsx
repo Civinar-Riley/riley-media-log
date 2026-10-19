@@ -5,10 +5,13 @@ import { Check, Dices } from 'lucide-react'
 import { api, ApiError } from '../api'
 import { useCategories } from '../cat'
 import { CategoryBadge, CoverImage, EmptyState, Loading, RatingStars, StatusBadge } from '../components/ui'
+import { invalidateLibrary } from '../cache'
+import { todayLocal } from '../date'
 
 export default function RandomPage() {
   const qc = useQueryClient()
   const { labelOf } = useCategories()
+  const [error, setError] = useState('')
   // 范围持久化：从详情页返回时不丢；默认「只摇想看」
   const [scope, setScope] = useState<'want' | 'all'>(() =>
     localStorage.getItem('rml-random-scope') === 'all' ? 'all' : 'want'
@@ -18,22 +21,24 @@ export default function RandomPage() {
     queryKey: ['random', scope],
     queryFn: () => api.random(scope === 'want' ? { status: ['want'] } : {}),
     retry: false,
-    // 返回页面时保持同一条结果（key 只含范围，不随重挂变化）；重摇走 refetch
-    staleTime: Infinity,
+    // 返回页面时保持同一条结果；缓存过期后允许重新摇，避免显示已删除/已改状态的旧条目
+    staleTime: 30_000,
   })
 
   const markDone = useMutation({
-    mutationFn: (id: number) => api.updateItem(id, { status: 'done' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['items'] })
-      qc.invalidateQueries({ queryKey: ['stats'] })
-      qc.invalidateQueries({ queryKey: ['status-counts'] })
-      q.refetch() // 顺手摇下一个
+    mutationFn: async (id: number) => {
+      await api.updateItem(id, { status: 'done' })
+      // 同步记一条观看流水，年度统计才会把它算进去
+      await api.addViewing(id, { watched_on: todayLocal(), comment: '看完标记' })
     },
+    onMutate: () => setError(''),
+    onSuccess: () => invalidateLibrary(qc),
+    onError: (e) => setError(e instanceof Error ? e.message : '标记失败'),
   })
 
   const item = q.data
   const notFound = q.error instanceof ApiError && q.error.status === 404
+  const loadError = q.isError && !notFound
 
   return (
     <div className="mx-auto max-w-xl">
@@ -60,6 +65,16 @@ export default function RandomPage() {
             <Link to="/new" className="btn btn-primary">
               记一笔
             </Link>
+          }
+        />
+      ) : loadError ? (
+        <EmptyState
+          title="摇一摇失败"
+          hint={q.error instanceof Error ? q.error.message : '请稍后重试。'}
+          action={
+            <button className="btn" onClick={() => q.refetch()}>
+              重试
+            </button>
           }
         />
       ) : item ? (
@@ -109,6 +124,7 @@ export default function RandomPage() {
           </div>
         </div>
       ) : null}
+      {error && <p className="mt-3 text-center text-sm text-danger">{error}</p>}
     </div>
   )
 }

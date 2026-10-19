@@ -7,6 +7,8 @@ import type { CategoryDef } from '../shared/types'
 
 interface CatCtx {
   ready: boolean
+  error: boolean
+  reload: () => void
   /** 未隐藏的类别（页签、表单用） */
   visible: CategoryDef[]
   /** 全部类别（管理页用，含隐藏） */
@@ -27,6 +29,10 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
 
   const value: CatCtx = {
     ready: q.isSuccess,
+    error: q.isError,
+    reload: () => {
+      void q.refetch()
+    },
     visible: all.filter((c) => !c.hidden),
     all,
     labelOf: (id) => labelMap.get(id) ?? id,

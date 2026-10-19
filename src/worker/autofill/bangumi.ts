@@ -33,7 +33,7 @@ export interface BgmDetails {
 export function bgmSubjectType(category: string): number | undefined {
   if (category === 'anime') return 2
   if (category === 'novel' || category === 'manga') return 1
-  if (category === 'series' || category === 'variety') return 6
+  if (category === 'series' || category === 'variety' || category === 'movie') return 6
   return undefined
 }
 
@@ -120,7 +120,7 @@ function infoboxValue(raw: BgmRaw, keys: string[]): string[] {
     if (typeof v === 'string') return [strip(v)].filter(Boolean)
     if (Array.isArray(v)) {
       return v
-        .map((x) => (typeof x === 'string' ? x : (x as { v: string }).v))
+        .map((x) => (typeof x === 'string' ? x : String((x as { v?: string })?.v ?? '')))
         .map(strip)
         .filter(Boolean)
     }

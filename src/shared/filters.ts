@@ -6,10 +6,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 function csvList(sp: URLSearchParams, key: string, allowed?: readonly string[]): string[] {
   const raw = sp.get(key)
   if (!raw) return []
-  const list = raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
+  // 去重 + 限长：避免恶意/异常 URL 拼出超过 D1 绑定参数上限的查询
+  const list = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 20)
   return allowed ? list.filter((v) => (allowed as readonly string[]).includes(v)) : list
 }
 

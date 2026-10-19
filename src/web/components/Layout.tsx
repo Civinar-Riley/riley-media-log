@@ -27,8 +27,8 @@ function Brand({ vertical = false }: { vertical?: boolean }) {
 }
 
 function ThemeQuickToggle() {
-  const { theme, setTheme } = useTheme()
-  const idx = THEMES.findIndex((t) => t.id === theme)
+  const { activeTheme, setTheme } = useTheme()
+  const idx = THEMES.findIndex((t) => t.id === activeTheme)
   const next = THEMES[(idx + 1) % THEMES.length]
   return (
     <button

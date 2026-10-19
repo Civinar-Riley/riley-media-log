@@ -20,32 +20,34 @@ statsRoutes.get('/stats', async (c) => {
         .first<{ n: number }>(),
       c.env.DB.prepare(
         `SELECT strftime('%Y', watched_on) AS y, COUNT(*) AS viewings, COUNT(DISTINCT item_id) AS items
-         FROM viewings GROUP BY y ORDER BY y DESC LIMIT 15`
+         FROM viewings
+         WHERE watched_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+         GROUP BY y ORDER BY y DESC LIMIT 15`
       ).all(),
       c.env.DB.prepare(`SELECT category AS key, COUNT(*) AS count FROM items GROUP BY category`).all(),
       c.env.DB.prepare(
-        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.regions) je
+        `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.regions) je
          GROUP BY je.value ORDER BY n DESC LIMIT 10`
       ).all(),
       c.env.DB.prepare(
-        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.tags) je
+        `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.tags) je
          GROUP BY je.value ORDER BY n DESC LIMIT 10`
       ).all(),
       c.env.DB.prepare(
-        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.authors) je
+        `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.authors) je
          GROUP BY je.value ORDER BY n DESC LIMIT 10`
       ).all(),
       c.env.DB.prepare(
-        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.directors) je
+        `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.directors) je
          GROUP BY je.value ORDER BY n DESC LIMIT 10`
       ).all(),
       c.env.DB.prepare(
-        `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.actors) je
+        `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.actors) je
          GROUP BY je.value ORDER BY n DESC LIMIT 10`
       ).all(),
       c.env.DB.prepare(`SELECT rating, COUNT(*) AS n FROM items GROUP BY rating`).all(),
       c.env.DB.prepare(
-        `SELECT strftime('%Y-%m', created_at) AS m, COUNT(*) AS n FROM items
+        `SELECT strftime('%Y-%m', datetime(created_at, '+8 hours')) AS m, COUNT(*) AS n FROM items
          WHERE status = 'want' GROUP BY m ORDER BY m`
       ).all(),
     ])

@@ -191,16 +191,23 @@ def main():
                 season = int(m.group(1))
 
             full_py, first_py = pinyin_of(title)
-            rows_out.append(
-                f"INSERT INTO items (title, pinyin, pinyin_initial, category, year, season, "
-                f"regions, tags, authors, status, progress, episode_count, rating, cover_url, "
-                f"channel, finish_status, notes, review, tmdb_id, created_at, updated_at) VALUES ("
+            values_sql = (
                 f"{sql_str(title)}, {sql_str(full_py)}, {sql_str(first_py)}, {sql_str(category)}, "
                 f"{year if year is not None else 'NULL'}, {season if season is not None else 'NULL'}, "
                 f"{sql_json(regions)}, {sql_json(tags)}, {sql_json(creators)}, {sql_str(status)}, "
                 f"{sql_str(progress)}, {episodes if episodes is not None else 'NULL'}, NULL, '', '', "
                 f"{sql_str(finish) if finish else 'NULL'}, {sql_str(notes)}, {sql_str(review)}, NULL, "
-                f"{sql_str(now)}, {sql_str(now)});"
+                f"{sql_str(now)}, {sql_str(now)}"
+            )
+            where_year = str(year) if year is not None else "-1"
+            # 幂等：同标题+年份+类别已存在就跳过，重复执行不会整库翻倍
+            rows_out.append(
+                f"INSERT INTO items (title, pinyin, pinyin_initial, category, year, season, "
+                f"regions, tags, authors, status, progress, episode_count, rating, cover_url, "
+                f"channel, finish_status, notes, review, tmdb_id, created_at, updated_at) "
+                f"SELECT {values_sql} WHERE NOT EXISTS ("
+                f"SELECT 1 FROM items WHERE title = {sql_str(title)} "
+                f"AND category = {sql_str(category)} AND COALESCE(year, -1) = {where_year});"
             )
             count += 1
         stats[sheet_name] = count

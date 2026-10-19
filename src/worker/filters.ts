@@ -10,16 +10,17 @@ function like(v: string): string {
 
 /** JSON 数组字段（tags/regions/creators）的「任一/全部」匹配条件 */
 function jsonFieldCond(field: string, values: string[], mode: 'any' | 'all') {
-  const ph = values.map(() => '?').join(',')
+  const unique = [...new Set(values)]
+  const ph = unique.map(() => '?').join(',')
   if (mode === 'any') {
     return {
       sql: `EXISTS (SELECT 1 FROM json_each(i.${field}) je WHERE je.value IN (${ph}))`,
-      params: values,
+      params: unique,
     }
   }
   return {
     sql: `(SELECT COUNT(DISTINCT je.value) FROM json_each(i.${field}) je WHERE je.value IN (${ph})) = ?`,
-    params: [...values, values.length],
+    params: [...unique, unique.length],
   }
 }
 

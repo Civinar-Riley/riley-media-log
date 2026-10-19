@@ -5,9 +5,11 @@ import { api } from './api'
 
 interface AuthCtx {
   loading: boolean
+  error: boolean
   authed: boolean
   hasApiToken: boolean
   demo: boolean
+  retry: () => void
   login: (password: string) => Promise<void>
   logout: () => Promise<void>
 }
@@ -16,7 +18,7 @@ const Ctx = createContext<AuthCtx | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['auth-status'],
     queryFn: api.status,
     staleTime: 60_000,
@@ -25,9 +27,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value: AuthCtx = {
     loading: isLoading,
+    error: isError,
     authed: data?.authenticated ?? false,
     hasApiToken: data?.has_api_token ?? false,
     demo: data?.demo ?? false,
+    retry: () => {
+      void refetch()
+    },
     login: async (password) => {
       await api.login(password)
       await qc.invalidateQueries({ queryKey: ['auth-status'] })

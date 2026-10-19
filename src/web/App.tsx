@@ -15,7 +15,7 @@ import ManageFieldsPage from './pages/ManageFieldsPage'
 import SettingsPage from './pages/SettingsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { loading, authed } = useAuth()
+  const { loading, authed, error, retry } = useAuth()
   const location = useLocation()
   if (loading) {
     return (
@@ -24,7 +24,19 @@ function RequireAuth({ children }: { children: ReactNode }) {
       </div>
     )
   }
-  if (!authed) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (error) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3">
+        <p className="text-sm text-faint">登录状态检查失败，请检查网络后重试。</p>
+        <button className="btn" onClick={retry}>
+          重试
+        </button>
+      </div>
+    )
+  }
+  if (!authed) {
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
+  }
   return <>{children}</>
 }
 

@@ -12,6 +12,8 @@ export const THEMES: { id: ThemeId; name: string; hint: string; swatch: string[]
 
 interface ThemeCtx {
   theme: ThemeId
+  /** 当前实际生效的主题（跟随系统时可能是 dawn/night，而非保存的 theme） */
+  activeTheme: ThemeId
   followSystem: boolean
   setTheme: (t: ThemeId) => void
   setFollowSystem: (v: boolean) => void
@@ -40,6 +42,7 @@ function applyTheme(theme: ThemeId) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>(effective)
+  const [activeTheme, setActiveTheme] = useState<ThemeId>(theme)
   const [followSystem, setFollowSystemState] = useState(
     () => localStorage.getItem('rml-theme-system') === '1'
   )
@@ -47,10 +50,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!followSystem) {
       applyTheme(theme)
+      setActiveTheme(theme)
       return
     }
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const sync = () => applyTheme(mq.matches ? 'night' : 'dawn')
+    const sync = () => {
+      const next: ThemeId = mq.matches ? 'night' : 'dawn'
+      applyTheme(next)
+      setActiveTheme(next)
+    }
     sync()
     mq.addEventListener('change', sync)
     return () => mq.removeEventListener('change', sync)
@@ -58,6 +66,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const value: ThemeCtx = {
     theme,
+    activeTheme,
     followSystem,
     setTheme: (t) => {
       localStorage.setItem('rml-theme', t)
@@ -69,6 +78,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setFollowSystem: (v) => {
       localStorage.setItem('rml-theme-system', v ? '1' : '0')
       setFollowSystemState(v)
+      if (!v) {
+        // 关闭跟随时以当前实际主题为准，避免跳回旧的手动主题
+        setThemeState(activeTheme)
+        localStorage.setItem('rml-theme', activeTheme)
+      }
     },
   }
 

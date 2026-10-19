@@ -1,6 +1,8 @@
 // TMDB 客户端：影视类（电影/剧集）元数据与封面
 // 注意：api.themoviedb.org 在中国大陆直连不通，本模块只在 Worker 端调用（Cloudflare 边缘 → TMDB 无碍）
 
+import { seasonFromTitle, stripSeasonMarker } from '../../shared/season'
+
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const IMG_BASE = 'https://image.tmdb.org/t/p/w780'
 
@@ -115,7 +117,12 @@ interface TmdbRaw {
   origin_country?: string[]
   number_of_episodes?: number
   number_of_seasons?: number
-  seasons?: { season_number: number; episode_count?: number; air_date?: string | null }[]
+  seasons?: {
+    season_number: number
+    episode_count?: number
+    air_date?: string | null
+    poster_path?: string | null
+  }[]
   // 季详情（/tv/{id}/season/{n}）返回的字段
   air_date?: string | null
   episode_count?: number
@@ -125,54 +132,9 @@ interface TmdbRaw {
     crew?: { job: string; name: string }[]
     cast?: { name: string }[]
   }
-}
-
-/** 中文数字（季号常见写法：第一季 / 第十二季 / 第二十三季） */
-const CN_NUM: Record<string, number> = {
-  零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4,
-  五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
-}
-
-function cnNumber(s: string): number | null {
-  if (/^\d+$/.test(s)) return Number(s)
-  let total = 0
-  let current = 0
-  for (const ch of s) {
-    if (ch === '百') {
-      total += (current || 1) * 100
-      current = 0
-    } else if (ch === '十') {
-      total += (current || 1) * 10
-      current = 0
-    } else if (ch in CN_NUM) {
-      current = CN_NUM[ch]
-    } else {
-      return null
-    }
+  aggregate_credits?: {
+    cast?: { name: string }[]
   }
-  return total + current
-}
-
-/** 标题里的季号：第（01）季 / 第1季 / 第一季 / Season 2 / S02 */
-const SEASON_RE =
-  /(?:第\s*[（(]?\s*(\d{1,3}|[零〇一二两三四五六七八九十百]+)\s*[）)]?\s*季)|(?:\bseason\s*(\d{1,3})\b)|(?:\bS(\d{1,3})\b)/i
-
-/** 从标题里解析季号（解析不出返回 null） */
-export function seasonFromTitle(title: string): number | null {
-  const m = title.match(SEASON_RE)
-  if (!m) return null
-  const n = cnNumber(m[1] ?? m[2] ?? m[3])
-  return n !== null && n >= 1 && n <= 200 ? n : null
-}
-
-/** 去掉标题里的季号，用于 TMDB 搜索（TMDB 的剧集条目不分季，带季号会搜空） */
-export function stripSeasonMarker(title: string): string {
-  const cleaned = title
-    .replace(SEASON_RE, ' ')
-    .replace(/[（(【\[]\s*[）)】\]]/g, ' ') // 清掉只包着季号的空括号
-    .replace(/\s+/g, ' ')
-    .trim()
-  return cleaned || title.trim()
 }
 
 /** 括号里的版本/地区/语言/年份说明：无耻之徒(美版) / 某某（普通话版） / 某某（2024） */
@@ -201,12 +163,27 @@ async function tmdbGet(env: Env, path: string, params: Record<string, string> = 
   url.searchParams.set('api_key', env.TMDB_API_KEY)
   url.searchParams.set('language', 'zh-CN')
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-  const res = await fetch(url, { headers: { accept: 'application/json' } })
-  if (!res.ok) {
+
+  let lastError = ''
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt))
+    let res: Response
+    try {
+      res = await fetch(url, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      })
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : '网络错误'
+      continue
+    }
+    if (res.ok) return (await res.json()) as TmdbRaw
     const text = await res.text()
-    throw new Error(`TMDB 请求失败（${res.status}）：${text.slice(0, 200)}`)
+    lastError = `${res.status}：${text.slice(0, 200)}`
+    // 429/5xx 重试；其他（404 等）直接失败
+    if (res.status !== 429 && res.status < 500) break
   }
-  return (await res.json()) as TmdbRaw
+  throw new Error(`TMDB 请求失败（${lastError}）`)
 }
 
 export function tmdbConfigured(env: Env): boolean {
@@ -221,7 +198,7 @@ async function tmdbSeasonInfo(
 ): Promise<{ episodes: number | null; year: number | null } | null> {
   try {
     const raw = await tmdbGet(env, `/tv/${tvId}/season/${season}`)
-    const eps = raw.episodes?.length ?? raw.episode_count
+    const eps = raw.episodes?.length || raw.episode_count
     const year = parseInt((raw.air_date ?? '').slice(0, 4), 10) || null
     return { episodes: eps && eps > 0 ? eps : null, year }
   } catch {
@@ -258,23 +235,35 @@ export async function tmdbSearch(
     return results.slice(0, 8)
   }
 
-  // 依次尝试：去季号（保留括号说明）→ 去括号说明 → 原始查询
+  // 依次尝试：去季号（保留括号说明）→ 去括号说明 → 原始查询。
+  // 分季条目把多个查询的结果合并，避免「整剧条目」排在前面时漏掉独立的单季条目。
   const queries = [baseQuery || q, qualifierFree, q].filter(
     (v, i, arr) => Boolean(v) && arr.indexOf(v) === i
   )
 
-  let results: TmdbRaw[] = []
+  const merged: TmdbRaw[] = []
+  const seen = new Set<string>()
   for (const queryText of queries) {
     const attempt: Record<string, string> = { ...params, query: queryText }
-    results = await run(attempt)
-    // 年份对不上时去掉年份再搜一次（首播年与条目年份不一致很常见）
-    if (!results.length && attempt.first_air_date_year) {
+    let found = await run(attempt)
+    // 年份对不上时去掉年份再搜一次（电影用 year，剧集用 first_air_date_year）
+    if (!found.length && (attempt.first_air_date_year || attempt.year)) {
       const retry = { ...attempt }
       delete retry.first_air_date_year
-      results = await run(retry)
+      delete retry.year
+      found = await run(retry)
     }
-    if (results.length) break
+    for (const r of found) {
+      const key = String(r.id)
+      if (!seen.has(key)) {
+        seen.add(key)
+        merged.push(r)
+      }
+    }
+    if (!seasonNo && merged.length) break
+    if (merged.length >= 8) break
   }
+  const results = merged.slice(0, 8)
 
   const candidates: TmdbCandidate[] = results.map((r) => ({
     externalId: String(r.id),
@@ -285,10 +274,11 @@ export async function tmdbSearch(
     rating: typeof r.vote_average === 'number' && r.vote_average > 0 ? r.vote_average : null,
   }))
 
-  // 分季条目：候选列表直接带上该季集数，避免必须点进字段页才知道对不对
+  // 分季条目：给最相关的前几个候选补上该季集数，避免必须点进字段页才知道对不对。
+  // 只补前 3 个，防止一次搜索打太多 TMDB 请求。
   if (isTv && seasonNo) {
     await Promise.all(
-      candidates.map(async (c) => {
+      candidates.slice(0, 3).map(async (c) => {
         const info = await tmdbSeasonInfo(env, c.externalId, seasonNo)
         c.seasonNumber = seasonNo
         c.seasonEpisodeCount = info?.episodes ?? null
@@ -309,7 +299,9 @@ export async function tmdbDetails(
   externalId: string,
   season?: number | null
 ): Promise<TmdbDetails> {
-  const raw = await tmdbGet(env, `/${kind}/${externalId}`, { append_to_response: 'credits' })
+  const raw = await tmdbGet(env, `/${kind}/${externalId}`, {
+    append_to_response: kind === 'tv' ? 'credits,aggregate_credits' : 'credits',
+  })
   const date = raw.release_date ?? raw.first_air_date ?? ''
   const year = parseInt(date.slice(0, 4), 10) || undefined
   const genreMap = kind === 'movie' ? MOVIE_GENRES : TV_GENRES
@@ -334,27 +326,41 @@ export async function tmdbDetails(
   if (kind === 'tv' && raw.created_by?.length) {
     fields.directors = raw.created_by.map((p) => p.name).slice(0, 3)
   }
-  const cast = (raw.credits?.cast ?? []).map((p) => p.name)
+  const cast =
+    kind === 'tv'
+      ? (raw.aggregate_credits?.cast ?? raw.credits?.cast ?? []).map((p) => p.name)
+      : (raw.credits?.cast ?? []).map((p) => p.name)
   if (cast.length) fields.actors = cast.slice(0, 3)
 
   let displayTitle = (raw.title ?? raw.name ?? '').trim()
   if (seasonNo) {
     displayTitle = `${displayTitle} · 第 ${seasonNo} 季`
+    const seasonMeta = raw.seasons?.find((s) => s.season_number === seasonNo)
     let seasonRaw: TmdbRaw | null = null
-    try {
-      seasonRaw = await tmdbGet(env, `/tv/${externalId}/season/${seasonNo}`)
-    } catch {
-      seasonRaw = null // 季数据拿不到时退回整剧数据（仅单季剧安全）
+    // 详情响应里已有该季的集数/年份/海报时直接用，少打一次接口
+    if (!seasonMeta) {
+      try {
+        seasonRaw = await tmdbGet(env, `/tv/${externalId}/season/${seasonNo}`)
+      } catch {
+        seasonRaw = null
+      }
     }
-    if (seasonRaw) {
-      const eps = seasonRaw.episodes?.length ?? seasonRaw.episode_count
+    if (seasonMeta) {
+      if (seasonMeta.episode_count) fields.episode_count = seasonMeta.episode_count
+      const seasonYear = parseInt((seasonMeta.air_date ?? '').slice(0, 4), 10) || undefined
+      if (seasonYear) fields.year = seasonYear
+      else if (seasonNo > 1) delete fields.year
+      if (seasonMeta.poster_path) fields.cover_url = `${IMG_BASE}${seasonMeta.poster_path}`
+    } else if (seasonRaw) {
+      const eps = seasonRaw.episodes?.length || seasonRaw.episode_count
       if (eps && eps > 0) fields.episode_count = eps
       const seasonYear = parseInt((seasonRaw.air_date ?? '').slice(0, 4), 10) || undefined
       if (seasonYear) fields.year = seasonYear
       else if (seasonNo > 1) delete fields.year // 多季剧的首播年不能代表该季
       if (seasonRaw.poster_path) fields.cover_url = `${IMG_BASE}${seasonRaw.poster_path}`
     } else {
-      if (raw.number_of_seasons === 1 && raw.number_of_episodes) {
+      // 季数据完全拿不到时，只有第 1 季才能安全回退到整剧数据
+      if (seasonNo === 1 && raw.number_of_seasons === 1 && raw.number_of_episodes) {
         fields.episode_count = raw.number_of_episodes
       } else if (seasonNo > 1) {
         delete fields.year

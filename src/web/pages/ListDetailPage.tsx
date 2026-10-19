@@ -6,6 +6,9 @@ import { api } from '../api'
 import type { Item } from '../../shared/types'
 import { EmptyState, Loading, Modal } from '../components/ui'
 import { ItemCard } from '../components/ItemCard'
+import { useCategories } from '../cat'
+import { invalidateLibrary } from '../cache'
+import { useDebounced } from '../hooks'
 
 /** 从库内搜索并勾选条目加入清单 */
 function ItemPicker({
@@ -20,33 +23,44 @@ function ItemPicker({
   onClose: () => void
 }) {
   const qc = useQueryClient()
+  const { labelOf } = useCategories()
   const [q, setQ] = useState('')
   const [picked, setPicked] = useState<number[]>([])
+  const [error, setError] = useState('')
+  const debouncedQ = useDebounced(q)
 
   const searchQ = useQuery({
-    queryKey: ['picker-search', q],
-    queryFn: () => api.listItems({ q: q || undefined }, 1, 20),
+    queryKey: ['picker-search', debouncedQ],
+    queryFn: () => api.listItems({ q: debouncedQ || undefined }, 1, 20),
     enabled: open,
     placeholderData: (prev) => prev,
   })
 
   const add = useMutation({
     mutationFn: () => api.addListItems(listId, picked),
+    onMutate: () => setError(''),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['list', listId] })
-      qc.invalidateQueries({ queryKey: ['lists'] })
+      invalidateLibrary(qc)
       setPicked([])
       setQ('')
       onClose()
     },
+    onError: (e) => setError(e instanceof Error ? e.message : '加入失败'),
   })
+
+  function handleClose() {
+    setQ('')
+    setPicked([])
+    setError('')
+    onClose()
+  }
 
   function toggle(id: number) {
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
   }
 
   return (
-    <Modal open={open} title="从片单里挑条目加入" onClose={onClose} wide>
+    <Modal open={open} title="从片单里挑条目加入" onClose={handleClose} wide>
       <input
         className="input mb-3"
         autoFocus
@@ -75,7 +89,7 @@ function ItemPicker({
               <span className="min-w-0 truncate">
                 {it.title}
                 <span className="ml-2 text-xs text-faint">
-                  {[it.year, it.category].filter(Boolean).join(' · ')}
+                  {[it.year, labelOf(it.category)].filter(Boolean).join(' · ')}
                 </span>
               </span>
               <span className="text-xs">{already ? '已在清单' : checked ? '✓ 已选' : ''}</span>
@@ -86,9 +100,10 @@ function ItemPicker({
           <p className="py-6 text-center text-sm text-faint">没搜到，换个词试试</p>
         )}
       </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       <div className="mt-4 flex justify-end gap-2 border-t border-line pt-3">
         <span className="mr-auto self-center text-xs text-faint">已选 {picked.length} 个</span>
-        <button className="btn" onClick={onClose}>
+        <button className="btn" onClick={handleClose}>
           取消
         </button>
         <button className="btn btn-primary" disabled={!picked.length || add.isPending} onClick={() => add.mutate()}>
@@ -107,25 +122,28 @@ export default function ListDetailPage() {
   const qc = useQueryClient()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   const listQ = useQuery({ queryKey: ['list', listId], queryFn: () => api.getList(listId) })
 
   const removeItem = useMutation({
     mutationFn: (itemId: number) => api.removeListItem(listId, itemId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['list', listId] })
-      qc.invalidateQueries({ queryKey: ['lists'] })
-    },
+    onMutate: () => setActionError(''),
+    onSuccess: () => invalidateLibrary(qc),
+    onError: (e) => setActionError(e instanceof Error ? e.message : '移出失败'),
   })
   const deleteList = useMutation({
     mutationFn: () => api.deleteList(listId),
+    onMutate: () => setActionError(''),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['lists'] })
+      invalidateLibrary(qc)
       navigate('/lists')
     },
+    onError: (e) => setActionError(e instanceof Error ? e.message : '删除失败'),
   })
 
   if (listQ.isLoading) return <Loading />
+  if (listQ.isError) return <p className="py-16 text-center text-faint">清单加载失败，请刷新重试。</p>
   const list = listQ.data
   if (!list) return <p className="py-16 text-center text-faint">清单不存在。</p>
 
@@ -153,13 +171,15 @@ export default function ListDetailPage() {
         </div>
       </div>
 
+      {actionError && <p className="mb-3 text-sm text-danger">{actionError}</p>}
+
       {list.items.length ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {list.items.map((it, i) => (
             <div key={it.id} className="group relative">
               <ItemCard item={it} index={i} />
               <button
-                className="absolute top-1.5 right-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100"
+                className="absolute top-1.5 right-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                 title="从清单移出（不删除条目）"
                 onClick={() => removeItem.mutate(it.id)}
               >

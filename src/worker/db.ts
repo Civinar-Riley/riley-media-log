@@ -20,6 +20,17 @@ export function parseArr(json: string | null | undefined): string[] {
   }
 }
 
+/** 大批量写入分块执行，避免单次 batch 过大触发 D1 限制 */
+export async function batchInChunks(
+  db: D1Database,
+  stmts: D1PreparedStatement[],
+  size = 100
+): Promise<void> {
+  for (let i = 0; i < stmts.length; i += size) {
+    await db.batch(stmts.slice(i, i + size))
+  }
+}
+
 /** D1 返回的行都是 Record<string, unknown>，这里做一次统一塑形 */
 export function mapItem(row: Record<string, unknown>): Item {
   return {

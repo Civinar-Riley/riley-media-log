@@ -24,13 +24,14 @@ imgRoutes.get('/img', async (c) => {
     return c.json({ error: 'URL 不合法' }, 400)
   }
   if (target.protocol !== 'https:') return c.json({ error: '只允许 https 图片' }, 400)
+  if (target.port !== '') return c.json({ error: '不允许的图片地址' }, 403)
 
   const rule = ALLOWED.find((r) => r.host === target.hostname)
   if (!rule || !rule.pattern.test(target.pathname)) {
     return c.json({ error: '不允许的图片地址' }, 403)
   }
 
-  const cacheKey = new Request(u, { method: 'GET' })
+  const cacheKey = new Request(target.toString(), { method: 'GET' })
   const cached = await caches.default.match(cacheKey)
   if (cached) {
     const hit = new Response(cached.body, cached)
@@ -38,7 +39,11 @@ imgRoutes.get('/img', async (c) => {
     return hit
   }
 
-  const upstream = await fetch(u, { headers: { 'User-Agent': UA, accept: 'image/*' } })
+  // 不允许跟随重定向，避免白名单主机被利用成开放代理
+  const upstream = await fetch(target.toString(), {
+    headers: { 'User-Agent': UA, accept: 'image/*' },
+    redirect: 'manual',
+  })
   if (!upstream.ok || !upstream.body) {
     return c.json({ error: `图片拉取失败（${upstream.status}）` }, 502)
   }

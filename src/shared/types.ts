@@ -164,6 +164,8 @@ export const AUTOFILL_FIELD_LABELS: Record<string, string> = {
   authors: '作者',
   episode_count: '总集数',
   external_rating: '外部评分',
+  tmdb_id: 'TMDB ID',
+  bgm_id: 'Bangumi ID',
 }
 
 export interface Viewing {

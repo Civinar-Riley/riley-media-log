@@ -102,7 +102,11 @@ def main():
         if not args.allow_duplicates and key in existing:
             skipped += 1
             continue
-        st, d = api(base, token, '/api/items', 'POST', body)
+        try:
+            st, d = api(base, token, '/api/items', 'POST', body)
+        except RuntimeError as e:
+            failed.append((n, f'{title}: {e}'))
+            continue
         if st == 201:
             created += 1
             existing.add(key)
@@ -115,6 +119,8 @@ def main():
     print(f'\n完成：导入 {created} 条，跳过（已存在）{skipped} 条，失败 {len(failed)} 条')
     for n, why in failed[:10]:
         print(f'  失败 #{n}: {why}')
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == '__main__':

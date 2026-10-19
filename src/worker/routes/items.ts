@@ -36,6 +36,11 @@ function pageNum(v: string | undefined): number | undefined {
   return Number.isFinite(n) ? Math.trunc(n) : undefined
 }
 
+function numId(v: string): number | null {
+  const n = Number(v)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
 export const itemsRoutes = new Hono<{ Bindings: Env }>()
 
 /** 列表：筛选 + 排序 + 分页 */
@@ -127,8 +132,8 @@ itemsRoutes.get('/status-counts', async (c) => {
 
 /** 详情：条目 + 观看流水 + 所在清单 + 动态时间线 */
 itemsRoutes.get('/:id', async (c) => {
-  const id = Number(c.req.param('id'))
-  if (!Number.isInteger(id)) return c.json({ error: 'ID 不合法' }, 400)
+  const id = numId(c.req.param('id'))
+  if (id === null) return c.json({ error: 'ID 不合法' }, 400)
   const [row, viewings, lists, activity] = await Promise.all([
     c.env.DB.prepare(
       `SELECT i.*, (SELECT MAX(watched_on) FROM viewings v WHERE v.item_id = i.id) AS last_watched
@@ -157,7 +162,8 @@ itemsRoutes.get('/:id', async (c) => {
 
 /** 更新条目（按提交的字段做局部更新，自动记动态） */
 itemsRoutes.put('/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = numId(c.req.param('id'))
+  if (id === null) return c.json({ error: 'ID 不合法' }, 400)
   const old = await c.env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first()
   if (!old) return c.json({ error: '条目不存在' }, 404)
 
@@ -230,7 +236,8 @@ itemsRoutes.put('/:id', async (c) => {
 })
 
 itemsRoutes.delete('/:id', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = numId(c.req.param('id'))
+  if (id === null) return c.json({ error: 'ID 不合法' }, 400)
   const res = await c.env.DB.prepare('DELETE FROM items WHERE id = ?').bind(id).run()
   if (!res.meta.changes) return c.json({ error: '条目不存在' }, 404)
   return c.json({ ok: true })
@@ -238,7 +245,8 @@ itemsRoutes.delete('/:id', async (c) => {
 
 /** 追加一条观看流水（二刷/补记） */
 itemsRoutes.post('/:id/viewings', async (c) => {
-  const id = Number(c.req.param('id'))
+  const id = numId(c.req.param('id'))
+  if (id === null) return c.json({ error: 'ID 不合法' }, 400)
   const item = await c.env.DB.prepare('SELECT id, title FROM items WHERE id = ?').bind(id).first()
   if (!item) return c.json({ error: '条目不存在' }, 404)
 
@@ -259,8 +267,9 @@ itemsRoutes.post('/:id/viewings', async (c) => {
 })
 
 itemsRoutes.delete('/:id/viewings/:vid', async (c) => {
-  const id = Number(c.req.param('id'))
-  const vid = Number(c.req.param('vid'))
+  const id = numId(c.req.param('id'))
+  const vid = numId(c.req.param('vid'))
+  if (id === null || vid === null) return c.json({ error: 'ID 不合法' }, 400)
   const res = await c.env.DB.prepare('DELETE FROM viewings WHERE id = ? AND item_id = ?').bind(vid, id).run()
   if (!res.meta.changes) return c.json({ error: '观看记录不存在' }, 404)
   await logActivity(c.env.DB, id, 'viewing_removed', '删除了一条观看记录')

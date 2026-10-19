@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Download, Eye, EyeOff, FileJson, LogOut, Plus, X } from 'lucide-react'
 import { api } from '../api'
@@ -9,10 +9,11 @@ import { useCategories } from '../cat'
 import { THEMES, useTheme } from '../theme'
 import type { CategoryDef } from '../../shared/types'
 import { PageHeader } from '../components/ui'
+import { invalidateLibrary } from '../cache'
 
 /** 类别管理：改名 / 排序 / 隐藏 / 新增 / 删除（有条目的类别不可删） */
 function CategoryManager() {
-  const { all } = useCategories()
+  const { all, ready, error: loadError, reload } = useCategories()
   const qc = useQueryClient()
   const facetsQ = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
   const counts = useMemo(
@@ -65,6 +66,27 @@ function CategoryManager() {
   }
 
   const dirty = draft !== null
+  const invalid = cats.some((c) => !c.label.trim())
+
+  if (loadError) {
+    return (
+      <section className="card p-5">
+        <h2 className="serif mb-1 font-medium text-ink">类别管理</h2>
+        <p className="text-sm text-danger">类别加载失败，暂时不能编辑。</p>
+        <button className="btn mt-3" onClick={reload}>
+          重试
+        </button>
+      </section>
+    )
+  }
+  if (!ready) {
+    return (
+      <section className="card p-5">
+        <h2 className="serif mb-1 font-medium text-ink">类别管理</h2>
+        <p className="text-sm text-faint">类别加载中…</p>
+      </section>
+    )
+  }
 
   return (
     <section className="card p-5">
@@ -88,7 +110,7 @@ function CategoryManager() {
               className="input h-8 w-28"
               value={c.label}
               maxLength={20}
-              onChange={(e) => patchAt(i, { label: e.target.value.trim() || c.label })}
+              onChange={(e) => patchAt(i, { label: e.target.value })}
               onFocus={() => setDraft(cats)}
             />
             <span className="text-xs text-faint">{counts.get(c.id) ?? 0} 条</span>
@@ -173,10 +195,11 @@ function CategoryManager() {
         {dirty && (
           <>
             <span className="ml-auto text-xs text-faint">有未保存的修改</span>
+            {invalid && <span className="text-xs text-danger">类别名不能为空</span>}
             <button className="btn h-8" onClick={() => { setDraft(null); setError('') }}>
               放弃
             </button>
-            <button className="btn btn-primary h-8" disabled={save.isPending} onClick={() => save.mutate()}>
+            <button className="btn btn-primary h-8" disabled={save.isPending || invalid} onClick={() => save.mutate()}>
               {save.isPending ? '保存中…' : '保存类别'}
             </button>
           </>
@@ -221,9 +244,7 @@ function AliasManager() {
     mutationFn: api.normalizePeople,
     onSuccess: (r) => {
       setNotice(`已归一 ${r.updated} 个条目`)
-      qc.invalidateQueries({ queryKey: ['items'] })
-      qc.invalidateQueries({ queryKey: ['facets'] })
-      qc.invalidateQueries({ queryKey: ['stats'] })
+      invalidateLibrary(qc)
     },
     onError: (e) => setError(e instanceof Error ? e.message : '归一失败'),
   })
@@ -236,6 +257,26 @@ function AliasManager() {
     setVariant('')
     setCanonical('')
     setNotice('')
+  }
+
+  if (settingsQ.isLoading) {
+    return (
+      <section className="card p-5">
+        <h2 className="serif mb-1 font-medium text-ink">人名别名</h2>
+        <p className="text-sm text-faint">别名加载中…</p>
+      </section>
+    )
+  }
+  if (settingsQ.isError) {
+    return (
+      <section className="card p-5">
+        <h2 className="serif mb-1 font-medium text-ink">人名别名</h2>
+        <p className="text-sm text-danger">别名加载失败，暂时不能编辑。</p>
+        <button className="btn mt-3" onClick={() => void settingsQ.refetch()}>
+          重试
+        </button>
+      </section>
+    )
   }
 
   return (
@@ -511,6 +552,15 @@ export default function SettingsPage() {
           />
           跟随系统昼夜自动切换（白天晨白，晚上夜幕）
         </label>
+      </section>
+
+      {/* 字段管理入口（移动端底部导航没有这一项） */}
+      <section className="card p-5">
+        <h2 className="serif mb-1 font-medium text-ink">字段管理</h2>
+        <p className="mb-3 text-xs text-faint">标签 / 地区 / 作者 / 导演 / 主演 / 渠道的改名与合并。</p>
+        <Link to="/manage" className="btn">
+          打开字段管理
+        </Link>
       </section>
 
       {/* 类别管理 */}

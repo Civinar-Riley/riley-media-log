@@ -1,17 +1,21 @@
 // 自动补全服务：外部源字段映射、只填空位、快照日志与撤回
 import { parseArr } from '../db'
-import type { CategoryDef } from '../../shared/types'
+import type { AutofillCandidate, CategoryDef } from '../../shared/types'
 import { AUTOFILL_FIELD_LABELS } from '../../shared/types'
-import { tmdbSearch, tmdbDetails, tmdbConfigured, seasonFromTitle } from './tmdb'
+import { tmdbSearch, tmdbDetails, tmdbConfigured } from './tmdb'
 import { bgmSearch, bgmDetails, bgmConfigured, bgmSubjectType } from './bangumi'
+import { seasonFromTitle } from '../../shared/season'
 
 export type AutofillSource = 'tmdb' | 'bangumi'
 
-/** 条目的有效季号：优先用 season 字段，没有则从标题「第 N 季」里解析 */
+/** 条目的有效季号：标题里的「第 N 季」最可信（改标题后 season 字段可能没同步），
+ *  其次是 season 字段，最后才是调用方传入的查询词 */
 export function itemSeason(item: Record<string, unknown>, titleOverride?: string): number | null {
+  const fromTitle = seasonFromTitle((item.title as string) ?? '')
+  if (fromTitle) return fromTitle
   const s = item.season
   if (typeof s === 'number' && s > 0) return s
-  return seasonFromTitle(titleOverride ?? (item.title as string) ?? '')
+  return titleOverride ? seasonFromTitle(titleOverride) : null
 }
 
 /** 类别 → 默认数据源：影视走 TMDB，书漫走 Bangumi */
@@ -120,11 +124,12 @@ export async function applyAutofill(
     logFields[field] = { before: hasValue ? current : normalizeValue(field, null), after: value }
   }
 
-  // 外部 ID 留档（tmdb_id / bgm_id）
+  // 外部 ID 留档（tmdb_id / bgm_id）；覆盖模式下也允许换成新候选的 ID
   const idColumn = source === 'tmdb' ? 'tmdb_id' : 'bgm_id'
-  if (isEmptyValue(idColumn, item[idColumn as keyof typeof item])) {
+  const currentId = item[idColumn as keyof typeof item]
+  if (isEmptyValue(idColumn, currentId) || (overwrite && String(currentId) !== externalId)) {
     patch[idColumn] = externalId
-    logFields[idColumn] = { before: null, after: externalId }
+    logFields[idColumn] = { before: currentId ?? null, after: externalId }
   }
 
   if (!Object.keys(patch).length) {
@@ -143,28 +148,29 @@ export async function applyAutofill(
   sets.push('updated_at = ?')
   const vals = Object.entries(patch).map(([k, v]) => (ARRAY_COLUMNS.has(k) ? JSON.stringify(v) : v))
   vals.push(now)
-  await db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, itemId).run()
-
-  const logResult = await db
-    .prepare(
-      'INSERT INTO autofill_log (item_id, source, external_id, fields, applied_at) VALUES (?,?,?,?,?)'
-    )
-    .bind(itemId, source, externalId, JSON.stringify(logFields), now)
-    .run()
-  const logId = logResult.meta.last_row_id as number
 
   const appliedNames = Object.keys(patch)
     .filter((k) => k !== 'external_rating' && k !== 'tmdb_id' && k !== 'bgm_id')
     .join('、')
-  await db
-    .prepare('INSERT INTO activity_log (item_id, action, detail, created_at) VALUES (?,?,?,?)')
-    .bind(
-      itemId,
-      'autofill',
-      `自动补全（${AUTOFILL_SOURCE_LABEL[source]}）：${appliedNames || '外部评分与外部 ID'}`,
-      now
-    )
-    .run()
+
+  // 更新、快照、动态一起提交：中途失败不会留下「改了但没法撤回」的状态
+  const [, logResult] = await db.batch([
+    db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, itemId),
+    db
+      .prepare(
+        'INSERT INTO autofill_log (item_id, source, external_id, fields, applied_at) VALUES (?,?,?,?,?)'
+      )
+      .bind(itemId, source, externalId, JSON.stringify(logFields), now),
+    db
+      .prepare('INSERT INTO activity_log (item_id, action, detail, created_at) VALUES (?,?,?,?)')
+      .bind(
+        itemId,
+        'autofill',
+        `自动补全（${AUTOFILL_SOURCE_LABEL[source]}）：${appliedNames || '外部评分与外部 ID'}`,
+        now
+      ),
+  ])
+  const logId = logResult.meta.last_row_id as number
 
   return { applied: logFields, skipped, logId }
 }
@@ -197,20 +203,29 @@ export async function undoAutofill(
   }
 
   const now = new Date().toISOString()
-  if (Object.keys(restore).length) {
-    const sets = Object.keys(restore).map((k) => `${k} = ?`)
-    sets.push('updated_at = ?')
-    const vals = [...Object.values(restore), now]
-    await db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, itemId).run()
+  if (!Object.keys(restore).length) {
+    // 没有字段可恢复：不消耗快照，用户处理完冲突后还能再试
+    return { restored: [], skipped }
   }
-  await db.prepare('UPDATE autofill_log SET undone_at = ? WHERE id = ?').bind(now, logId).run()
+
+  const sets = Object.keys(restore).map((k) => `${k} = ?`)
+  sets.push('updated_at = ?')
+  const vals = [...Object.values(restore), now]
+  await db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, itemId).run()
+  const mark = await db
+    .prepare('UPDATE autofill_log SET undone_at = ? WHERE id = ? AND undone_at IS NULL')
+    .bind(now, logId)
+    .run()
+  if (!mark.meta.changes) return { error: '这条补全已经撤回过了' }
 
   await db
     .prepare('INSERT INTO activity_log (item_id, action, detail, created_at) VALUES (?,?,?,?)')
     .bind(
       itemId,
       'autofill',
-      `撤回自动补全（${AUTOFILL_SOURCE_LABEL[source] ?? source}）：${(skipped.length ? '部分字段' : Object.keys(restore).join('、')) || '无字段'}已恢复`,
+      `撤回自动补全（${AUTOFILL_SOURCE_LABEL[source] ?? source}）：${
+        skipped.length ? '部分字段' : Object.keys(restore).join('、')
+      }已恢复`,
       now
     )
     .run()
@@ -269,7 +284,7 @@ export async function searchCandidates(
   query: string,
   year?: number,
   season?: number | null
-): Promise<{ source: AutofillSource; candidates: unknown[] }> {
+): Promise<{ source: AutofillSource; candidates: AutofillCandidate[] }> {
   const src: AutofillSource = source ?? defaultSource(category)
   if (src === 'tmdb') {
     if (!tmdbConfigured(env)) throw new Error('未配置 TMDB_API_KEY，请在 Cloudflare 后台设置后重试')

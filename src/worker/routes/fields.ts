@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { fieldRenameSchema, readBody } from '../validate'
-import { parseArr } from '../db'
+import { parseArr, nowISO, batchInChunks } from '../db'
 import type { FieldName } from '../../shared/types'
 
 const FIELDS: FieldName[] = ['tags', 'regions', 'authors', 'directors', 'actors', 'channel']
@@ -13,23 +13,23 @@ fieldsRoutes.get('/facets', async (c) => {
   const [cats, tags, regions, authors, directors, actors, channels, years] = await Promise.all([
     c.env.DB.prepare(`SELECT category AS v, COUNT(*) AS n FROM items GROUP BY category`).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
-      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.tags) je
+      `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.tags) je
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
     ).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
-      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.regions) je
+      `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.regions) je
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
     ).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
-      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.authors) je
+      `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.authors) je
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
     ).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
-      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.directors) je
+      `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.directors) je
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
     ).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
-      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.actors) je
+      `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.actors) je
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
     ).all<{ v: string; n: number }>(),
     c.env.DB.prepare(
@@ -62,7 +62,7 @@ fieldsRoutes.get('/values', async (c) => {
   let rows: { results: { v: string; n: number }[] }
   if (ARRAY_FIELDS.has(field)) {
     rows = await c.env.DB.prepare(
-      `SELECT je.value AS v, COUNT(*) AS n FROM items i, json_each(i.${field}) je
+      `SELECT je.value AS v, COUNT(DISTINCT i.id) AS n FROM items i, json_each(i.${field}) je
        GROUP BY je.value ORDER BY n DESC, v COLLATE NOCASE`
     ).all()
   } else {
@@ -85,12 +85,13 @@ fieldsRoutes.post('/rename', async (c) => {
 
   if (field === 'channel') {
     const ph = fromList.map(() => '?').join(',')
-    const res = await c.env.DB.prepare(`UPDATE items SET channel = ? WHERE channel IN (${ph})`)
-      .bind(data.to, ...fromList)
+    const res = await c.env.DB.prepare(`UPDATE items SET channel = ?, updated_at = ? WHERE channel IN (${ph})`)
+      .bind(data.to, nowISO(), ...fromList)
       .run()
     return c.json({ updated: res.meta.changes ?? 0 })
   }
 
+  const now = nowISO()
   const ph = fromList.map(() => '?').join(',')
   const rows = await c.env.DB.prepare(
     `SELECT id, ${field} AS vals FROM items i
@@ -112,9 +113,15 @@ fieldsRoutes.post('/rename', async (c) => {
       }
     }
     if (next.join('\u0000') !== current.join('\u0000')) {
-      stmts.push(c.env.DB.prepare(`UPDATE items SET ${field} = ? WHERE id = ?`).bind(JSON.stringify(next), row.id))
+      stmts.push(
+        c.env.DB.prepare(`UPDATE items SET ${field} = ?, updated_at = ? WHERE id = ?`).bind(
+          JSON.stringify(next),
+          now,
+          row.id
+        )
+      )
     }
   }
-  if (stmts.length) await c.env.DB.batch(stmts)
+  await batchInChunks(c.env.DB, stmts)
   return c.json({ updated: stmts.length })
 })

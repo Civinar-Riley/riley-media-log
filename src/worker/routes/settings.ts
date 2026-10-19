@@ -3,6 +3,7 @@ import { readBody } from '../validate'
 import { categoriesSchema, aliasesSchema } from '../validate'
 import { DEFAULT_CATEGORIES } from '../../shared/types'
 import type { CategoryDef } from '../../shared/types'
+import { nowISO, batchInChunks } from '../db'
 
 const CATEGORIES_KEY = 'categories'
 const ALIASES_KEY = 'person_aliases'
@@ -56,13 +57,21 @@ export async function readAliases(db: D1Database): Promise<Record<string, string
   return {}
 }
 
-/** 把人名数组按别名映射归一到主名 */
+/** 把人名数组按别名映射归一到主名（支持 A→B→C 这种链式别名） */
 function applyAliases(names: string[] | undefined, aliases: Record<string, string>): string[] | undefined {
   if (!names) return names
   const seen = new Set<string>()
   const out: string[] = []
   for (const n of names) {
-    const canonical = aliases[n] ?? n
+    let canonical = n
+    const visited = new Set<string>([n])
+    let hops = 0
+    while (aliases[canonical] && hops++ < 20) {
+      const next = aliases[canonical]
+      if (next === canonical || visited.has(next)) break
+      visited.add(next)
+      canonical = next
+    }
     if (canonical && !seen.has(canonical)) {
       seen.add(canonical)
       out.push(canonical)
@@ -153,6 +162,7 @@ settingsRoutes.post('/aliases/normalize', async (c) => {
 
   const rows = await c.env.DB.prepare('SELECT id, authors, directors, actors FROM items').all()
   const stmts: D1PreparedStatement[] = []
+  const now = nowISO()
   for (const row of rows.results) {
     const authors = applyAliases(parseCol(row.authors), aliases)
     const directors = applyAliases(parseCol(row.directors), aliases)
@@ -166,16 +176,19 @@ settingsRoutes.post('/aliases/normalize', async (c) => {
       JSON.stringify(actors) !== JSON.stringify(origActors)
     ) {
       stmts.push(
-        c.env.DB.prepare('UPDATE items SET authors = ?, directors = ?, actors = ? WHERE id = ?').bind(
+        c.env.DB.prepare(
+          'UPDATE items SET authors = ?, directors = ?, actors = ?, updated_at = ? WHERE id = ?'
+        ).bind(
           JSON.stringify(authors),
           JSON.stringify(directors),
           JSON.stringify(actors),
+          now,
           row.id
         )
       )
     }
   }
-  if (stmts.length) await c.env.DB.batch(stmts)
+  await batchInChunks(c.env.DB, stmts)
   return c.json({ updated: stmts.length })
 })
 

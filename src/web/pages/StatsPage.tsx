@@ -124,7 +124,7 @@ export default function StatsPage() {
         <Kpi label="记录总数" value={stats.kpi.total} />
         <Kpi label="看过" value={stats.kpi.done} hint={`在看 ${stats.kpi.watching} · 弃 ${stats.kpi.dropped}`} />
         <Kpi label="想看" value={stats.kpi.want} hint="待看清单" />
-        <Kpi label={`今年看完`} value={stats.kpi.done_this_year} hint="按观看日期统计" />
+        <Kpi label="今年有观看记录" value={stats.kpi.done_this_year} hint="按观看日期统计" />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">

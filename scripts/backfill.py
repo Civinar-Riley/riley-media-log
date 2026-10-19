@@ -58,9 +58,44 @@ def title_variants(title):
     return out
 
 
+SEASON_RE = re.compile(
+    r'(?:第\s*[（(]?\s*(\d{1,3}|[零〇一二两三四五六七八九十百]+)\s*[）)]?\s*季)'
+    r'|(?:\bseason\s*(\d{1,3})\b)',
+    re.I,
+)
+PAREN_RE = re.compile(r'[（(【\[]\s*([^）)】\]]{1,16})\s*[）)】\]]')
+QUALIFIER_HINT = re.compile(
+    r'(?:版|语|配音|字幕|TV|剧场|电影|电视剧|动画|真人|普通话|粤语|国语|英语|日语|韩语|中配|日配|台配|原声)',
+    re.I,
+)
+REGION_EXACT = re.compile(r'^(?:美|英|日|韩|港|台|中国|美国|英国|日本|韩国|香港|台湾|大陆|内地|中国大陆|中国香港|中国台湾)$')
+YEAR_EXACT = re.compile(r'^\d{4}年?$')
+
+
+def normalize_title(title):
+    """和 Worker 端一致：去掉季号与（美版）这类括号说明，用于自动匹配。"""
+    t = SEASON_RE.sub(' ', title)
+    t = PAREN_RE.sub(
+        lambda m: ' '
+        if (QUALIFIER_HINT.search(m.group(1)) or REGION_EXACT.match(m.group(1).strip()) or YEAR_EXACT.match(m.group(1).strip()))
+        else m.group(0),
+        t,
+    )
+    t = re.sub(r'[（(【\[]\s*[）)】\]]', ' ', t)
+    return re.sub(r'\s+', ' ', t).strip().lower()
+
+
+def api_safe(*args, **kwargs):
+    """单条请求失败（网络抖动/网关 HTML）不中断整批。"""
+    try:
+        return api(*args, **kwargs)
+    except RuntimeError as e:
+        return 0, {'error': str(e)}
+
+
 def main():
     parser = argparse.ArgumentParser(description='批量回填封面等元数据')
-    parser.add_argument('--base', default=BASE, help='书影集地址（默认本地 dev）')
+    parser.add_argument('--base', default=None, help='书影集地址（默认本地 dev；--undo 时默认用报告里的地址）')
     parser.add_argument('--token', default=None, help='API_TOKEN（默认读 .dev.vars）')
     parser.add_argument('--category', default=None, help='只处理某个类别 id（如 movie）')
     parser.add_argument('--missing', default='cover_url', help='只处理该字段为空的条目（默认 cover_url；none=不过滤，处理全部）')
@@ -79,23 +114,43 @@ def main():
     if not token:
         print('找不到 API_TOKEN：请加 --token 或确认 .dev.vars 存在', file=sys.stderr)
         sys.exit(1)
-    print(f'目标环境：{args.base}')
 
     # 撤回模式
     if args.undo:
         report = json.load(open(args.undo, encoding='utf-8'))
-        entries = report.get('applied', [])
-        print(f'按报告撤回 {len(entries)} 条...')
+        report_base = (report.get('base') or '').rstrip('/')
+        explicit_base = (args.base or '').rstrip('/')
+        if report_base:
+            if explicit_base and explicit_base != report_base:
+                print(f'报告生成于 {report_base}，与 --base {explicit_base} 不一致，拒绝撤回', file=sys.stderr)
+                sys.exit(2)
+            args.base = report_base
+        else:
+            args.base = explicit_base or BASE
+        print(f'目标环境：{args.base}')
+
+        entries = [e for e in report.get('applied', []) if isinstance(e.get('log_id'), int)]
+        skipped = len(report.get('applied', [])) - len(entries)
+        suffix = f'（跳过 {skipped} 条无 log_id 的记录）' if skipped else ''
+        print(f'按报告撤回 {len(entries)} 条...{suffix}')
         ok = 0
         for e in entries:
-            st, d = api(args.base, token, '/api/autofill/undo', 'POST', {'log_id': e['log_id']})
-            mark = '✓' if st == 200 else f'✗ {d.get("error", "")}'
-            print(f'  {mark} {e["title"]}')
+            st, d = api_safe(args.base, token, '/api/autofill/undo', 'POST', {'log_id': e['log_id']})
             if st == 200:
-                ok += 1
+                restored = d.get('restored', [])
+                if restored:
+                    ok += 1
+                    print(f'  ✓ {e["title"]}（恢复 {len(restored)} 个字段）')
+                else:
+                    print(f'  - {e["title"]}：没有可恢复字段（可能已被手动修改）')
+            else:
+                print(f'  ✗ {e["title"]}：{d.get("error", "")}')
             time.sleep(0.3)
         print(f'撤回完成 {ok}/{len(entries)}')
         return
+
+    args.base = (args.base or BASE).rstrip('/')
+    print(f'目标环境：{args.base}')
 
     # 找出待处理条目（翻页取全；缺字段过滤在本地做）
     try:
@@ -113,7 +168,14 @@ def main():
 
     scope = '全部条目' if args.missing == 'none' else f'缺 {args.missing}'
     print(f'待处理 {len(items)} 条（{scope}），模式：{"自动" if args.auto else "交互"}\n')
-    report = {'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'), 'missing': args.missing, 'applied': []}
+    report = {
+        'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
+        'base': args.base,
+        'missing': args.missing,
+        'applied': [],
+        'manual_review': [],
+        'errors': [],
+    }
     applied_count = 0
     ambiguous = 0
 
@@ -123,7 +185,7 @@ def main():
         preview_body = {'item_id': it['id']}
         if args.source != 'auto':
             preview_body['source'] = args.source
-        st, d = api(args.base, token, '/api/autofill/preview', 'POST', preview_body)
+        st, d = api_safe(args.base, token, '/api/autofill/preview', 'POST', preview_body)
         if st != 200:
             print(f'{prefix} → 跳过（{d.get("error", "搜索失败")}）')
             time.sleep(args.delay)
@@ -138,7 +200,7 @@ def main():
                 body = {**preview_body, 'query': vq}
                 if no_year:
                     body['year'] = None
-                st, d = api(args.base, token, '/api/autofill/preview', 'POST', body)
+                st, d = api_safe(args.base, token, '/api/autofill/preview', 'POST', body)
                 if st == 200 and d.get('candidates'):
                     candidates = d['candidates']
                     used_query = vq
@@ -151,26 +213,34 @@ def main():
 
         chosen = None
         if args.auto:
-            exact = [c for c in candidates if c['title'].strip().lower() == title.strip().lower()]
-            if used_query:
-                exact += [c for c in candidates if c['title'].strip().lower() == used_query.strip().lower()]
+            item_title = normalize_title(title)
+            exact = [c for c in candidates if normalize_title(c['title']) == item_title]
+            if it.get('year'):
+                exact = [
+                    c
+                    for c in exact
+                    if (c.get('seasonYear') or c.get('year')) == it['year']
+                ]
             exact = list({c['externalId']: c for c in exact}.values())
             if len(exact) == 1:
                 chosen = exact[0]
             else:
-                same_year = [c for c in candidates if it.get('year') and c['year'] == it['year']]
-                if len(same_year) == 1:
-                    chosen = same_year[0]
-                else:
-                    ambiguous += 1
-                    print(f'{prefix} → 匹配不唯一（{len(candidates)} 个候选），记入待人工')
-                    report['applied'].append({'item_id': it['id'], 'title': title, 'log_id': None, 'candidates': candidates})
-                    time.sleep(args.delay)
-                    continue
+                ambiguous += 1
+                print(f'{prefix} → 匹配不唯一（{len(candidates)} 个候选），记入待人工')
+                report['manual_review'].append(
+                    {'item_id': it['id'], 'title': title, 'candidates': candidates}
+                )
+                time.sleep(args.delay)
+                continue
         else:
             print(f'\n{prefix}（{it.get("year") or "?"} · {it.get("category")}），候选：')
             for i, c in enumerate(candidates, 1):
-                print(f'  {i}. {c["title"]}（{c["year"] or "?"}）★{c["rating"] or "?"}  {c["overview"][:40]}')
+                season = (
+                    f' 第{c.get("seasonNumber")}季·{c["seasonEpisodeCount"]}集'
+                    if c.get('seasonEpisodeCount')
+                    else ''
+                )
+                print(f'  {i}. {c["title"]}（{c["year"] or "?"}）{season}★{c["rating"] or "?"}  {c["overview"][:40]}')
             ans = input('选择序号应用（回车跳过，q 退出）: ').strip()
             if ans.lower() == 'q':
                 print('已中断')
@@ -181,7 +251,7 @@ def main():
                 continue
             chosen = candidates[int(ans) - 1]
 
-        st, d = api(args.base, token, '/api/autofill/apply', 'POST', {
+        st, d = api_safe(args.base, token, '/api/autofill/apply', 'POST', {
             'item_id': it['id'],
             'source': d.get('source') or 'tmdb',
             'external_id': chosen['externalId'],
@@ -197,14 +267,16 @@ def main():
             print(f'  ✓ 已填入：{", ".join(filled) or "仅外部 ID"}（log {log_id}）')
         else:
             print(f'  ✗ 应用失败：{d.get("error", "")}')
-            report['applied'].append({'item_id': it['id'], 'title': title, 'log_id': None, 'error': d.get('error')})
+            report['errors'].append({'item_id': it['id'], 'title': title, 'error': d.get('error')})
         time.sleep(args.delay)
 
     os.makedirs('data', exist_ok=True)
     out = f'data/backfill_report_{time.strftime("%Y%m%d%H%M%S")}.json'
     json.dump(report, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    print(f'\n完成：应用 {applied_count} 条，待人工 {ambiguous} 条。报告已写入 {out}')
+    print(f'\n完成：应用 {applied_count} 条，待人工 {ambiguous} 条，失败 {len(report["errors"])} 条。报告已写入 {out}')
     print('批量撤回：python scripts/backfill.py --undo ' + out)
+    if report['errors']:
+        sys.exit(1)
 
 
 if __name__ == '__main__':

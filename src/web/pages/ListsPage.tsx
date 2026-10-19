@@ -11,14 +11,17 @@ export default function ListsPage() {
   const listsQ = useQuery({ queryKey: ['lists'], queryFn: api.lists })
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [error, setError] = useState('')
 
   const create = useMutation({
     mutationFn: () => api.createList({ name: name.trim(), description: description.trim() }),
+    onMutate: () => setError(''),
     onSuccess: () => {
       setName('')
       setDescription('')
       qc.invalidateQueries({ queryKey: ['lists'] })
     },
+    onError: (e) => setError(e instanceof Error ? e.message : '新建失败'),
   })
 
   function onSubmit(e: FormEvent) {
@@ -45,8 +48,12 @@ export default function ListsPage() {
         </button>
       </form>
 
+      {error && <p className="mb-3 text-sm text-danger">{error}</p>}
+
       {listsQ.isLoading ? (
         <Loading />
+      ) : listsQ.isError ? (
+        <p className="py-16 text-center text-sm text-faint">清单加载失败，请刷新重试。</p>
       ) : listsQ.data && listsQ.data.length > 0 ? (
         <ul className="space-y-2.5">
           {listsQ.data.map((l, i) => (

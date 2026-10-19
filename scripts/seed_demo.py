@@ -366,6 +366,7 @@ def main():
     before = base['total']
 
     created = []
+    failed = 0
     for it in ITEMS:
         title, category, year, regions, tags, directors, actors, authors, status, rating, channel, progress, finish, notes, review = it
         body = {
@@ -377,6 +378,9 @@ def main():
         st, d = api('/api/items', 'POST', body)
         if st == 201:
             created.append((d['id'], title, status))
+        else:
+            failed += 1
+            print(f'  创建失败：{title}（{st} {d.get("error") if isinstance(d, dict) else d}）')
 
     # 给看过的条目铺观看流水
     done = [c for c in created if c[2] == 'done']
@@ -394,6 +398,9 @@ def main():
 
     st, after = api('/api/items?page_size=1')
     print(f'演示数据灌入完成：新增条目 {len(created)} 条、观看流水 {view_count} 条（原 {before} → 现 {after["total"]}）')
+    if failed:
+        print(f'有 {failed} 条创建失败', file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == '__main__':

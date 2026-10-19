@@ -43,7 +43,7 @@ autofillRoutes.post('/preview', async (c) => {
       503
     )
   }
-  const query = (data.query ?? (item.title_cn as string) ?? (item.title as string) ?? '').trim()
+  const query = (data.query?.trim() || (item.title as string) || '').trim()
   let year: number | undefined
   if (data.year === null) year = undefined
   else if (typeof data.year === 'number') year = data.year
@@ -132,5 +132,13 @@ autofillRoutes.get('/logs', async (c) => {
   )
     .bind(itemId)
     .all()
-  return c.json(rows.results)
+  return c.json(
+    rows.results.map((r) => {
+      try {
+        return { ...r, fields: JSON.parse((r.fields as string) || '{}') }
+      } catch {
+        return { ...r, fields: {} }
+      }
+    })
+  )
 })

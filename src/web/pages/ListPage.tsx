@@ -97,15 +97,20 @@ function FilterBar({
   onChange: (patch: Partial<ItemFilters>) => void
   onClear: () => void
 }) {
-  const triState = (value: boolean | undefined, on: () => Partial<ItemFilters>, off: () => Partial<ItemFilters>) => (
+  const triState = (
+    value: boolean | undefined,
+    on: () => Partial<ItemFilters>,
+    all: () => Partial<ItemFilters>,
+    none: () => Partial<ItemFilters>
+  ) => (
     <div className="flex gap-1.5">
-      <button className={`chip ${value === undefined ? 'chip-on' : ''}`} onClick={() => value !== undefined && onChange(off())}>
+      <button className={`chip ${value === undefined ? 'chip-on' : ''}`} onClick={() => value !== undefined && onChange(all())}>
         全部
       </button>
       <button className={`chip ${value === true ? 'chip-on' : ''}`} onClick={() => value !== true && onChange(on())}>
         有
       </button>
-      <button className={`chip ${value === false ? 'chip-on' : ''}`} onClick={() => value !== false && onChange(off())}>
+      <button className={`chip ${value === false ? 'chip-on' : ''}`} onClick={() => value !== false && onChange(none())}>
         无
       </button>
     </div>
@@ -152,7 +157,7 @@ function FilterBar({
               <button
                 key={n}
                 className={`chip ${filters.rating_min === n ? 'chip-on' : ''}`}
-                onClick={() => onChange({ rating_min: filters.rating_min === n ? undefined : n })}
+                onClick={() => onChange({ rating_min: filters.rating_min === n ? undefined : n, rating_max: undefined })}
               >
                 ★{n}+
               </button>
@@ -247,7 +252,8 @@ function FilterBar({
           {triState(
             filters.has_cover,
             () => ({ has_cover: true }),
-            () => ({ has_cover: undefined })
+            () => ({ has_cover: undefined }),
+            () => ({ has_cover: false })
           )}
         </div>
         <div>
@@ -255,7 +261,8 @@ function FilterBar({
           {triState(
             filters.has_review,
             () => ({ has_review: true }),
-            () => ({ has_review: undefined })
+            () => ({ has_review: undefined }),
+            () => ({ has_review: false })
           )}
         </div>
         <div>
@@ -324,9 +331,9 @@ export default function ListPage() {
   const [sp, setSp] = useSearchParams()
   const navigate = useNavigate()
   const filters = useMemo(() => parseFilters(sp), [sp])
-  const page = Math.max(1, Number(sp.get('page')) || 1)
+  const page = Math.max(1, Math.trunc(Number(sp.get('page')) || 1))
   // 每页条数（10 的倍数，默认 60；服务端上限 200）
-  const pageSize = Math.max(10, Math.min(200, Number(sp.get('page_size')) || 60))
+  const pageSize = Math.max(10, Math.min(200, Math.trunc(Number(sp.get('page_size')) || 60)))
   const [view, setView] = useState<'grid' | 'table'>(() =>
     localStorage.getItem('rml-view') === 'table' ? 'table' : 'grid'
   )
@@ -340,7 +347,7 @@ export default function ListPage() {
     restored.current = true
     if (![...sp.keys()].length) {
       const saved = localStorage.getItem('rml-last-view')
-      if (saved) setSp(new URLSearchParams(saved))
+      if (saved) setSp(new URLSearchParams(saved), { replace: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -361,6 +368,18 @@ export default function ListPage() {
     queryFn: () => api.listItems(filters, page, pageSize),
     placeholderData: (prev) => prev,
   })
+  const outOfRange = Boolean(itemsQ.data && itemsQ.data.total > 0 && itemsQ.data.items.length === 0)
+
+  // 页码超过实际页数（手改 URL、删掉最后一页数据）时收敛到最后一页，避免误显示“空库”
+  useEffect(() => {
+    if (!itemsQ.data) return
+    const maxPage = Math.max(1, Math.ceil(itemsQ.data.total / pageSize))
+    if (page <= maxPage) return
+    const next = new URLSearchParams(sp)
+    if (maxPage <= 1) next.delete('page')
+    else next.set('page', String(maxPage))
+    setSp(next, { replace: true })
+  }, [itemsQ.data, page, pageSize, sp, setSp])
   const facetsQ = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
   const statusCountsQ = useQuery({
     queryKey: ['status-counts', filters.category?.join(',') ?? ''],
@@ -376,11 +395,19 @@ export default function ListPage() {
   useEffect(() => setSearchText(filters.q ?? ''), [filters.q])
   useEffect(() => {
     const t = setTimeout(() => {
-      if (searchText !== (filters.q ?? '')) patchFilters({ q: searchText || undefined })
+      // 用函数式更新读取最新 URL，避免输入后 350ms 内又改筛选时把新筛选覆盖掉
+      setSp((prev) => {
+        const current = parseFilters(prev)
+        if (searchText === (current.q ?? '')) return prev
+        const next = { ...current, q: searchText || undefined }
+        const nsp = new URLSearchParams(filtersToQuery(next))
+        const ps = prev.get('page_size')
+        if (ps) nsp.set('page_size', ps)
+        return nsp
+      })
     }, 350)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchText])
+  }, [searchText, setSp])
 
   function patchFilters(patch: Partial<ItemFilters>) {
     const next = { ...filters, ...patch }
@@ -408,6 +435,7 @@ export default function ListPage() {
     filters.year_min !== undefined ||
     filters.year_max !== undefined ||
     filters.rating_min !== undefined ||
+    filters.rating_max !== undefined ||
     filters.has_cover !== undefined ||
     filters.has_review !== undefined ||
     !!filters.channel ||
@@ -468,7 +496,7 @@ export default function ListPage() {
         >
           全部
           <span className="text-[11px] opacity-70">
-            {visibleCats.reduce((sum, cd) => sum + (catCounts.get(cd.id) ?? 0), 0)}
+            {Array.from(catCounts.values()).reduce((sum, n) => sum + n, 0)}
           </span>
         </button>
         {visibleCats.map((cd) => (
@@ -546,6 +574,10 @@ export default function ListPage() {
       )}
 
       {itemsQ.isLoading ? (
+        <Loading />
+      ) : itemsQ.isError ? (
+        <p className="py-16 text-center text-sm text-faint">条目加载失败，请刷新重试。</p>
+      ) : outOfRange ? (
         <Loading />
       ) : itemsQ.data && itemsQ.data.items.length > 0 ? (
         view === 'grid' ? (

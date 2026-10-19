@@ -6,7 +6,7 @@
      python scripts/qa_sweep.py --base https://logdemo.example.com --allow-remote
 
 依赖 .dev.vars 里的 API_TOKEN 与 AUTH_PASSWORD。断言以当前库的总数与分布为基准（不写死具体条数），
-会创建临时条目/清单/别名并自动清理；启动时会自动清理上次异常退出遗留的「QA」前缀测试条目。
+会创建临时条目/清单/别名并自动清理；启动时会自动清理上次异常退出遗留的「QA测试 / QA补全测试」条目。
 """
 import argparse
 import json
@@ -77,9 +77,9 @@ if st != 200:
     print('无法连接本地服务，请先 npm run dev')
     sys.exit(1)
 
-# 自愈：清理上次异常退出遗留的「QA」前缀测试条目（本项目测试数据全部以 QA 开头）
+# 自愈：只清理本脚本创建过的测试条目，避免误删真实标题以「QA」开头的条目
 _, left = api('/api/items?q=QA&page_size=100')
-stale = [i for i in left['items'] if i['title'].startswith('QA')]
+stale = [i for i in left['items'] if i['title'].startswith(('QA测试', 'QA补全测试'))]
 if stale:
     print(f'发现 {len(stale)} 条历史遗留测试条目，先清理：')
     for i in stale:

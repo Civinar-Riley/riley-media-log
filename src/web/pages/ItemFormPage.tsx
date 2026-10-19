@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
@@ -12,10 +12,12 @@ import {
   TAG_PRESETS,
 } from '../../shared/types'
 import type { FinishStatus, Item, Status } from '../../shared/types'
+import { seasonFromTitle } from '../../shared/season'
 import { Loading, PageHeader, RatingStars } from '../components/ui'
 import { BackLink } from '../components/ui'
 import { TagInput } from '../components/TagInput'
 import { useCategories } from '../cat'
+import { invalidateLibrary } from '../cache'
 
 interface FormState {
   title: string
@@ -159,14 +161,46 @@ export default function ItemFormPage() {
 
   const [form, setForm] = useState<FormState>(EMPTY)
   const [error, setError] = useState('')
+  const initialRef = useRef<FormState>(EMPTY)
   const catOptions = visibleCats.some((c) => c.id === form.category)
     ? visibleCats
     : [...visibleCats, { id: form.category, label: form.category }]
   const catLabels = Object.fromEntries(catOptions.map((c) => [c.id, c.label]))
+  const regionSuggestions = useMemo(
+    () => [...new Set([...REGION_PRESETS, ...(facets.data?.regions.map(([v]) => v) ?? [])])],
+    [facets.data]
+  )
+  const tagSuggestions = useMemo(
+    () => [...new Set([...TAG_PRESETS, ...(facets.data?.tags.map(([v]) => v) ?? [])])],
+    [facets.data]
+  )
+  const authorSuggestions = useMemo(() => facets.data?.authors.map(([v]) => v) ?? [], [facets.data])
+  const directorSuggestions = useMemo(
+    () => facets.data?.directors.map(([v]) => v) ?? [],
+    [facets.data]
+  )
+  const actorSuggestions = useMemo(() => facets.data?.actors.map(([v]) => v) ?? [], [facets.data])
 
   useEffect(() => {
-    if (editing && existing.data) setForm(toForm(existing.data))
+    if (editing && existing.data) {
+      const next = toForm(existing.data)
+      initialRef.current = next
+      setForm(next)
+    }
   }, [editing, existing.data])
+
+  // 编辑页和 /new 复用同一个组件实例：从编辑切到新建时要清空，否则会带着上一条的数据
+  useEffect(() => {
+    if (!editing) {
+      initialRef.current = EMPTY
+      setForm(EMPTY)
+      setError('')
+    }
+  }, [editing])
+
+  const confirmLeave = () =>
+    JSON.stringify(form) === JSON.stringify(initialRef.current) ||
+    window.confirm('有未保存的修改，确定离开吗？')
 
   const save = useMutation({
     mutationFn: async () => {
@@ -180,11 +214,11 @@ export default function ItemFormPage() {
         rating: form.rating,
         regions: form.regions,
         tags: form.tags,
-        authors: form.authors,
-        directors: form.directors,
-        actors: form.actors,
+        authors: authorOf(form.category) ? form.authors : [],
+        directors: directorOf(form.category) ? form.directors : [],
+        actors: actorOf(form.category) ? form.actors : [],
         channel: form.channel.trim(),
-        finish_status: form.finish_status,
+        finish_status: finishOf(form.category) ? form.finish_status : null,
         cover_url: form.cover_url.trim(),
         progress: form.progressNum
           ? `看到第 ${form.progressNum} ${progressUnit(form.category)}`
@@ -196,11 +230,7 @@ export default function ItemFormPage() {
       return editing ? api.updateItem(itemId!, payload) : api.createItem(payload)
     },
     onSuccess: (saved) => {
-      qc.invalidateQueries({ queryKey: ['items'] })
-      qc.invalidateQueries({ queryKey: ['facets'] })
-      qc.invalidateQueries({ queryKey: ['stats'] })
-      qc.invalidateQueries({ queryKey: ['status-counts'] })
-      if (editing) qc.invalidateQueries({ queryKey: ['item', itemId] })
+      invalidateLibrary(qc)
       if (editing) {
         // 历史里本来就有详情页（列表→详情→编辑），直接退回去即可：
         // 编辑页不留历史，之后点「返回」自然回到列表；直接打开编辑页的情况退无可退，replace 落到详情
@@ -218,11 +248,17 @@ export default function ItemFormPage() {
     setForm((f) => ({ ...f, [key]: value }))
 
   if (editing && existing.isLoading) return <Loading />
+  if (editing && existing.isError)
+    return <p className="py-16 text-center text-sm text-faint">条目加载失败，请刷新重试。</p>
 
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-3">
-        <BackLink fallback={editing ? `/items/${itemId}` : '/'} label={editing ? '返回条目' : '返回片单'} />
+        <BackLink
+          fallback={editing ? `/items/${itemId}` : '/'}
+          label={editing ? '返回条目' : '返回片单'}
+          confirm={confirmLeave}
+        />
       </div>
       <PageHeader
         title={editing ? '编辑条目' : '记一笔'}
@@ -238,7 +274,21 @@ export default function ItemFormPage() {
             className="input h-11 text-lg"
             autoFocus={!editing}
             value={form.title}
-            onChange={(e) => set('title', e.target.value)}
+            onChange={(e) => {
+              const title = e.target.value
+              const inTitle = seasonFromTitle(title)
+              setForm((f) => ({
+                ...f,
+                title,
+                // 标题里出现季号 → 同步；原标题的季号被去掉 → 清空（不留上一部的季号）；
+                // 原标题本来没有季号 → 尊重用户手填的值
+                season: inTitle
+                  ? String(inTitle)
+                  : f.season && seasonFromTitle(f.title)
+                    ? ''
+                    : f.season,
+              }))
+            }}
             placeholder="作品名"
           />
         </div>
@@ -275,7 +325,7 @@ export default function ItemFormPage() {
             <TagInput
               values={form.regions}
               onChange={(v) => set('regions', v)}
-              suggestions={[...new Set([...REGION_PRESETS, ...(facets.data?.regions.map(([v]) => v) ?? [])])]}
+              suggestions={regionSuggestions}
               placeholder="如 中国大陆、日本"
             />
           </div>
@@ -284,7 +334,7 @@ export default function ItemFormPage() {
             <TagInput
               values={form.tags}
               onChange={(v) => set('tags', v)}
-              suggestions={[...new Set([...TAG_PRESETS, ...(facets.data?.tags.map(([v]) => v) ?? [])])]}
+              suggestions={tagSuggestions}
               placeholder="如 科幻、悬疑"
             />
           </div>
@@ -296,7 +346,7 @@ export default function ItemFormPage() {
             <TagInput
               values={form.authors}
               onChange={(v) => set('authors', v)}
-              suggestions={facets.data?.authors.map(([v]) => v) ?? []}
+              suggestions={authorSuggestions}
               placeholder="作者名，回车添加"
             />
           </div>
@@ -309,7 +359,7 @@ export default function ItemFormPage() {
                 <TagInput
                   values={form.directors}
                   onChange={(v) => set('directors', v)}
-                  suggestions={facets.data?.directors.map(([v]) => v) ?? []}
+                  suggestions={directorSuggestions}
                   placeholder="导演名"
                 />
               </div>
@@ -320,7 +370,7 @@ export default function ItemFormPage() {
                 <TagInput
                   values={form.actors}
                   onChange={(v) => set('actors', v)}
-                  suggestions={facets.data?.actors.map(([v]) => v) ?? []}
+                  suggestions={actorSuggestions}
                   placeholder="主演名，可多个"
                 />
               </div>
@@ -360,6 +410,8 @@ export default function ItemFormPage() {
                     ...f,
                     progressNum: digits,
                     progressLegacy: digits ? '' : f.progressLegacy,
+                    // 填了进度说明已经开看；「看过 / 弃了」是用户明确选择，不自动改
+                    status: digits && f.status === 'want' ? 'watching' : f.status,
                   }))
                 }}
                 placeholder="8"
@@ -431,6 +483,9 @@ export default function ItemFormPage() {
                 src={form.cover_url}
                 alt="封面预览"
                 className="h-20 w-14 rounded border border-line object-cover"
+                onLoad={(e) => {
+                  ;(e.target as HTMLImageElement).style.opacity = '1'
+                }}
                 onError={(e) => {
                   ;(e.target as HTMLImageElement).style.opacity = '0.2'
                 }}
@@ -464,7 +519,17 @@ export default function ItemFormPage() {
         {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 border-t border-line pt-4">
-          <button className="btn" onClick={() => navigate(-1)}>
+          <button
+            className="btn"
+            onClick={() => {
+              if (!confirmLeave()) return
+              if (location.key === 'default') {
+                navigate(editing ? `/items/${itemId}` : '/', { replace: true })
+              } else {
+                navigate(-1)
+              }
+            }}
+          >
             取消
           </button>
           <button className="btn btn-primary" disabled={!form.title.trim() || save.isPending} onClick={() => save.mutate()}>

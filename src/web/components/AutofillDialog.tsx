@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Sparkles, Undo2 } from 'lucide-react'
 import { api } from '../api'
 import { AUTOFILL_FIELD_LABELS } from '../../shared/types'
 import type { AutofillCandidate, AutofillFieldOption, AutofillSource, Item } from '../../shared/types'
 import { Modal } from './ui'
 
-type Step = 'search' | 'fields' | 'done'
+type Step = 'search' | 'fields' | 'done' | 'undone'
 
 function defaultSourceFor(category: string): AutofillSource {
   return category === 'novel' || category === 'manga' || category === 'anime' ? 'bangumi' : 'tmdb'
@@ -28,32 +28,45 @@ export function AutofillDialog({
   const [source, setSource] = useState<AutofillSource>(defaultSourceFor(item.category))
   const [query, setQuery] = useState(item.title)
   const [candidates, setCandidates] = useState<AutofillCandidate[]>([])
+  const [searched, setSearched] = useState(false)
   const [picked, setPicked] = useState<AutofillCandidate | null>(null)
   const [options, setOptions] = useState<{ available: AutofillFieldOption[]; filled: AutofillFieldOption[]; displayTitle: string } | null>(null)
   const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [applied, setApplied] = useState<string[] | null>(null)
   const [skipped, setSkipped] = useState<string[]>([])
+  const [undone, setUndone] = useState<{ restored: string[]; skipped: string[] } | null>(null)
   const [logId, setLogId] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  /** 每次搜索/选候选/应用/撤回递增；晚到的旧响应直接丢弃 */
+  const requestId = useRef(0)
 
   // 每次打开都按当前条目重新开始：标题可能刚改过（详情页刷新后 prop 会更新），
   // 不能沿用组件首次挂载时的旧标题/旧候选
   useEffect(() => {
     if (!open) return
+    requestId.current++
     setStep('search')
     setSource(defaultSourceFor(item.category))
     setQuery(item.title)
     setCandidates([])
+    setSearched(false)
     setPicked(null)
     setOptions(null)
     setChecked({})
     setApplied(null)
     setSkipped([])
+    setUndone(null)
     setLogId(null)
     setBusy(false)
     setError('')
   }, [open, item.title, item.category])
+
+  function handleClose() {
+    requestId.current++
+    setBusy(false)
+    onClose()
+  }
 
   function fail(e: unknown) {
     setError(e instanceof Error ? e.message : '请求失败')
@@ -61,23 +74,31 @@ export function AutofillDialog({
   }
 
   async function doSearch() {
+    const id = ++requestId.current
+    const src = source
     setBusy(true)
     setError('')
     try {
-      const d = await api.autofillPreview({ item_id: item.id, source, query: query || undefined })
+      const d = await api.autofillPreview({ item_id: item.id, source: src, query: query || undefined })
+      if (id !== requestId.current) return
       setCandidates(d.candidates)
+      setSearched(true)
       setBusy(false)
     } catch (e) {
-      return fail(e)
+      if (id !== requestId.current) return
+      fail(e)
     }
   }
 
   async function pickCandidate(c: AutofillCandidate) {
+    const id = ++requestId.current
+    const src = source
     setPicked(c)
     setBusy(true)
     setError('')
     try {
-      const d = await api.autofillFields({ item_id: item.id, source, external_id: c.externalId })
+      const d = await api.autofillFields({ item_id: item.id, source: src, external_id: c.externalId })
+      if (id !== requestId.current) return
       setOptions({ available: d.available, filled: d.filled, displayTitle: d.displayTitle })
       const init: Record<string, boolean> = {}
       for (const f of d.available) init[f.key] = true
@@ -86,52 +107,62 @@ export function AutofillDialog({
       setStep('fields')
       setBusy(false)
     } catch (e) {
-      return fail(e)
+      if (id !== requestId.current) return
+      fail(e)
     }
   }
 
   async function doApply() {
     if (!picked || !options) return
+    const id = ++requestId.current
+    const src = source
+    const candidate = picked
+    const filledKeys = new Set(options.filled.map((f) => f.key))
+    const fields = Object.keys(checked).filter((k) => checked[k])
+    const overwrite = fields.some((k) => filledKeys.has(k))
     setBusy(true)
     setError('')
     try {
-      const filledKeys = new Set(options.filled.map((f) => f.key))
-      const fields = Object.keys(checked).filter((k) => checked[k])
-      const overwrite = fields.some((k) => filledKeys.has(k))
       const d = await api.autofillApply({
         item_id: item.id,
-        source,
-        external_id: picked.externalId,
+        source: src,
+        external_id: candidate.externalId,
         fields,
         overwrite,
       })
+      onApplied()
+      if (id !== requestId.current) return
       setApplied(Object.keys(d.applied).map((k) => AUTOFILL_FIELD_LABELS[k] ?? k))
       setSkipped(d.skipped)
       setLogId(d.logId)
       setStep('done')
-      onApplied()
       setBusy(false)
     } catch (e) {
-      return fail(e)
+      if (id !== requestId.current) return
+      fail(e)
     }
   }
 
   async function doUndo() {
     if (logId === null) return
+    const id = ++requestId.current
     setBusy(true)
+    setError('')
     try {
-      await api.autofillUndo(logId)
-      setApplied(null)
-      setLogId(null)
+      const d = await api.autofillUndo(logId)
       onApplied()
+      if (id !== requestId.current) return
+      setUndone(d)
+      setStep('undone')
       setBusy(false)
     } catch (e) {
-      return fail(e)
+      if (id !== requestId.current) return
+      fail(e)
     }
   }
 
   return (
-    <Modal open={open} title="自动补全" onClose={onClose} wide>
+    <Modal open={open} title="自动补全" onClose={handleClose} wide>
       {/* 数据源切换（切换后回到搜索步） */}
       <div className="mb-3 flex items-center gap-2 text-sm">
         <span className="label">数据源</span>
@@ -141,10 +172,15 @@ export function AutofillDialog({
             className={`chip ${source === s ? 'chip-on' : ''}`}
             onClick={() => {
               if (source === s) return
+              requestId.current++
               setSource(s)
               setStep('search')
               setCandidates([])
+              setSearched(false)
               setPicked(null)
+              setOptions(null)
+              setBusy(false)
+              setError('')
             }}
           >
             {SOURCE_LABEL[s]}
@@ -155,7 +191,7 @@ export function AutofillDialog({
 
       {step === 'search' && (
         <div>
-          {item.season ? (
+          {source === 'tmdb' && item.category !== 'movie' && item.season ? (
             <p className="mb-2 text-xs text-faint">
               该条目是第 {item.season} 季：搜索会自动忽略标题里的季号和（美版）这类说明，集数 / 年份按该季单独获取。
             </p>
@@ -206,6 +242,8 @@ export function AutofillDialog({
                 </li>
               ))}
             </ul>
+          ) : searched ? (
+            <p className="py-4 text-center text-sm text-faint">没有找到候选，换个标题或数据源试试。</p>
           ) : (
             <p className="py-4 text-center text-sm text-faint">输入标题后搜索，候选来自 {SOURCE_LABEL[source]}</p>
           )}
@@ -284,7 +322,11 @@ export function AutofillDialog({
               '没有需要填入的字段。'
             )}
           </p>
-          {skipped.length > 0 && <p className="mt-1 text-xs text-faint">跳过：{skipped.join('、')}</p>}
+          {skipped.length > 0 && (
+            <p className="mt-1 text-xs text-faint">
+              跳过：{skipped.map((k) => AUTOFILL_FIELD_LABELS[k] ?? k).join('、')}
+            </p>
+          )}
           <div className="mt-5 flex justify-center gap-2">
             {logId !== null && (
               <button className="btn" disabled={busy} onClick={doUndo}>
@@ -292,7 +334,36 @@ export function AutofillDialog({
                 撤回这次补全
               </button>
             )}
-            <button className="btn btn-primary" onClick={onClose}>
+            <button className="btn btn-primary" onClick={handleClose}>
+              完成
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'undone' && undone && (
+        <div className="text-center">
+          <Undo2 className="mx-auto mb-3 h-8 w-8 text-brand" />
+          <p className="text-sm text-ink">
+            {undone.restored.length > 0 ? (
+              <>
+                已恢复：
+                <span className="font-medium">
+                  {undone.restored.map((k) => AUTOFILL_FIELD_LABELS[k] ?? k).join('、')}
+                </span>
+              </>
+            ) : (
+              '没有字段需要恢复（可能已被手动修改）。'
+            )}
+          </p>
+          {undone.skipped.length > 0 && (
+            <p className="mt-1 text-xs text-faint">
+              跳过（撤回前已被手动修改）：
+              {undone.skipped.map((k) => AUTOFILL_FIELD_LABELS[k] ?? k).join('、')}
+            </p>
+          )}
+          <div className="mt-5 flex justify-center">
+            <button className="btn btn-primary" onClick={handleClose}>
               完成
             </button>
           </div>

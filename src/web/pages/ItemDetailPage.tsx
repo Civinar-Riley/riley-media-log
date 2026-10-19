@@ -6,14 +6,8 @@ import { api } from '../api'
 import { CategoryBadge, CoverImage, FinishBadge, Loading, Modal, PageHeader, RatingStars, StatusBadge } from '../components/ui'
 import { AutofillDialog } from '../components/AutofillDialog'
 import { BackLink } from '../components/ui'
-
-function fmtDateTime(iso: string): string {
-  return iso.slice(0, 16).replace('T', ' ')
-}
-
-function todayLocal(): string {
-  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
-}
+import { invalidateLibrary } from '../cache'
+import { fmtDateTime, todayLocal } from '../date'
 
 function Meta({ label, value }: { label: string; value?: React.ReactNode }) {
   if (value === undefined || value === null || value === '') return null
@@ -54,43 +48,47 @@ export default function ItemDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [autofillOpen, setAutofillOpen] = useState(false)
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['item', itemId] })
-    qc.invalidateQueries({ queryKey: ['items'] })
-    qc.invalidateQueries({ queryKey: ['stats'] })
-    qc.invalidateQueries({ queryKey: ['status-counts'] })
-  }
+  const [actionError, setActionError] = useState('')
+
+  const invalidate = () => invalidateLibrary(qc)
+  const fail = (e: unknown) => setActionError(e instanceof Error ? e.message : '操作失败')
 
   const addViewing = useMutation({
     mutationFn: () => api.addViewing(itemId, { watched_on: viewDate, comment: viewComment.trim() }),
+    onMutate: () => setActionError(''),
     onSuccess: () => {
       setViewComment('')
       invalidate()
     },
+    onError: fail,
   })
   const delViewing = useMutation({
     mutationFn: (vid: number) => api.deleteViewing(itemId, vid),
+    onMutate: () => setActionError(''),
     onSuccess: invalidate,
+    onError: fail,
   })
   const delItem = useMutation({
     mutationFn: () => api.deleteItem(itemId),
+    onMutate: () => setActionError(''),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['items'] })
+      invalidateLibrary(qc)
       navigate('/', { replace: true })
     },
+    onError: fail,
   })
   const toggleList = useMutation({
     mutationFn: async ({ listId, has }: { listId: number; has: boolean }) => {
       if (has) return api.removeListItem(listId, itemId)
       return api.addListItems(listId, [itemId])
     },
-    onSuccess: () => {
-      invalidate()
-      qc.invalidateQueries({ queryKey: ['lists'] })
-    },
+    onMutate: () => setActionError(''),
+    onSuccess: invalidate,
+    onError: fail,
   })
 
   if (itemQ.isLoading) return <Loading />
+  if (itemQ.isError) return <p className="py-16 text-center text-sm text-faint">条目加载失败，请刷新重试。</p>
   const item = itemQ.data
   if (!item) return <p className="py-16 text-center text-faint">条目不存在，可能已被删除。</p>
 
@@ -109,10 +107,7 @@ export default function ItemDetailPage() {
               className="btn"
               title="重新拉取条目数据"
               disabled={itemQ.isFetching}
-              onClick={() => {
-                void itemQ.refetch()
-                void listsQ.refetch()
-              }}
+              onClick={() => invalidateLibrary(qc)}
             >
               <RefreshCw className={`h-4 w-4 ${itemQ.isFetching ? 'animate-spin' : ''}`} />
               刷新
@@ -137,6 +132,8 @@ export default function ItemDetailPage() {
         }
       />
 
+      {actionError && <p className="mb-3 text-sm text-danger">{actionError}</p>}
+
       <div className="grid gap-6 md:grid-cols-[220px_1fr]">
         {/* 左：封面 */}
         <div className="anim mx-auto w-44 md:mx-0 md:w-full">
@@ -156,7 +153,14 @@ export default function ItemDetailPage() {
               <RatingStars value={item.rating} size={16} />
               {item.external_rating != null && (
                 <span className="inline-flex h-5 items-center rounded border border-line px-1.5 text-[11px] leading-none text-soft">
-                  {item.tmdb_id ? 'TMDB' : item.bgm_id ? 'Bangumi' : '外部'} {item.external_rating.toFixed(1)}
+                  {item.tmdb_id && item.bgm_id
+                    ? '外部'
+                    : item.tmdb_id
+                      ? 'TMDB'
+                      : item.bgm_id
+                        ? 'Bangumi'
+                        : '外部'}{' '}
+                  {item.external_rating.toFixed(1)}
                 </span>
               )}
             </div>
@@ -221,9 +225,9 @@ export default function ItemDetailPage() {
                 placeholder="这次看的一句话感受（可不填）"
                 value={viewComment}
                 onChange={(e) => setViewComment(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !addViewing.isPending && addViewing.mutate()}
+                onKeyDown={(e) => e.key === 'Enter' && viewDate && !addViewing.isPending && addViewing.mutate()}
               />
-              <button className="btn btn-primary" disabled={addViewing.isPending} onClick={() => addViewing.mutate()}>
+              <button className="btn btn-primary" disabled={!viewDate || addViewing.isPending} onClick={() => addViewing.mutate()}>
                 <CalendarPlus className="h-4 w-4" />
                 记一次观看
               </button>
@@ -237,7 +241,7 @@ export default function ItemDetailPage() {
                       {v.comment && <span className="ml-2 text-sm break-words text-soft">{v.comment}</span>}
                     </div>
                     <button
-                      className="btn btn-danger h-7 shrink-0 px-2 transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100"
+                      className="btn btn-danger h-7 shrink-0 px-2 transition md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                       onClick={() => delViewing.mutate(v.id)}
                       title="删除这条观看记录"
                     >

@@ -1,5 +1,18 @@
 // 书影集 Service Worker：静态资源缓存优先，API 永远走网络
-const CACHE = 'rml-v1'
+const CACHE = 'rml-v2'
+
+function isCacheableAsset(request, res) {
+  if (!res.ok) return false
+  const type = (res.headers.get('content-type') || '').toLowerCase()
+  // SPA fallback 会给缺失的 /assets/*.js 返回 200 的 index.html，不能把它缓存成 JS
+  if (type.includes('text/html')) return false
+  const path = new URL(request.url).pathname
+  if (path.startsWith('/assets/')) {
+    if (/\.js$/.test(path)) return type.includes('javascript')
+    if (/\.css$/.test(path)) return type.includes('text/css')
+  }
+  return true
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -27,8 +40,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((res) => {
-          const copy = res.clone()
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy))
+          if (res.ok) {
+            const copy = res.clone()
+            caches.open(CACHE).then((cache) => cache.put(event.request, copy))
+          }
           return res
         })
         .catch(() => caches.match(event.request).then((hit) => hit || caches.match('/')))
@@ -42,7 +57,12 @@ self.addEventListener('fetch', (event) => {
       (hit) =>
         hit ||
         fetch(event.request).then((res) => {
-          if (res.ok) {
+          // 缺失的 /assets/* 被 SPA fallback 成 HTML 时，直接按 404 处理，避免污染缓存
+          const type = (res.headers.get('content-type') || '').toLowerCase()
+          if (url.pathname.startsWith('/assets/') && type.includes('text/html')) {
+            return new Response('Not found', { status: 404 })
+          }
+          if (isCacheableAsset(event.request, res)) {
             const copy = res.clone()
             caches.open(CACHE).then((cache) => cache.put(event.request, copy))
           }

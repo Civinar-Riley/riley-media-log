@@ -108,7 +108,7 @@ export const api = {
 
   autofillLogs: (item_id: number) => req<AutofillLog[]>(`/api/autofill/logs?item_id=${item_id}`),
   autofillStatus: () => req<{ tmdb: boolean; bangumi: boolean }>('/api/autofill/status'),
-  autofillPreview: (body: { item_id: number; source?: AutofillSource; query?: string }) =>
+  autofillPreview: (body: { item_id: number; source?: AutofillSource; query?: string; year?: number | null }) =>
     req<{ source: AutofillSource; candidates: AutofillCandidate[] }>('/api/autofill/preview', {
       method: 'POST',
       body: JSON.stringify(body),

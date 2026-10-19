@@ -41,6 +41,19 @@ if (sub === 'deploy') {
     console.error('缺少 DEMO_API_TOKEN：本地请写进 .env，CI 请配 GitHub Secret')
     process.exit(1)
   }
+  const host = new URL(DEMO_URL).hostname
+  if (!host.includes('demo')) {
+    console.error(`拒绝执行：DEMO_URL=${DEMO_URL} 看起来不是演示站（hostname 需包含 demo）`)
+    process.exit(1)
+  }
+  console.log(`预检 ${DEMO_URL} …`)
+  const preflight = await fetch(`${DEMO_URL}/api/items?page_size=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!preflight.ok) {
+    console.error(`预检失败：${preflight.status} ${await preflight.text().catch(() => '')}`)
+    process.exit(1)
+  }
   const proxyArgs = process.env.DEMO_PROXY ? ['--proxy', process.env.DEMO_PROXY] : []
   console.log('① 清空演示库…')
   run('npx', ['wrangler', 'd1', 'execute', 'riley-media-log-demo', '--remote', '--file', 'scripts/demo_wipe.sql'], {

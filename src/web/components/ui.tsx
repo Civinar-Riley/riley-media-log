@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Star, ImageOff } from 'lucide-react'
@@ -7,14 +7,25 @@ import type { Status, FinishStatus } from '../../shared/types'
 import { useCategories } from '../cat'
 
 /** 返回按钮：从站内点进来的原路返回；直接输入/刷新进来的落到 fallback */
-export function BackLink({ fallback = '/', label = '返回' }: { fallback?: string; label?: string }) {
+export function BackLink({
+  fallback = '/',
+  label = '返回',
+  confirm,
+}: {
+  fallback?: string
+  label?: string
+  confirm?: () => boolean
+}) {
   const navigate = useNavigate()
   const location = useLocation()
   const fromSite = location.key !== 'default'
   return (
     <button
       className="inline-flex cursor-pointer items-center gap-1 text-sm text-faint transition hover:text-brand"
-      onClick={() => (fromSite ? navigate(-1) : navigate(fallback, { replace: true }))}
+      onClick={() => {
+        if (confirm && !confirm()) return
+        fromSite ? navigate(-1) : navigate(fallback, { replace: true })
+      }}
     >
       <ArrowLeft className="h-4 w-4" />
       {label}
@@ -33,6 +44,12 @@ export function CoverImage({
   className?: string
 }) {
   const [failed, setFailed] = useState(false)
+
+  // 换了一条记录/换了封面地址后，重新给新地址一次加载机会
+  useEffect(() => {
+    setFailed(false)
+  }, [coverUrl])
+
   let src = coverUrl
   if (src) {
     // 被墙的图床走 Worker 图片代理，保证国内浏览器能加载
@@ -343,6 +360,53 @@ export function Modal({
   children: ReactNode
   wide?: boolean
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  useEffect(() => {
+    if (!open) return
+    const previous = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCloseRef.current()
+        return
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return
+      const nodes = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+      if (!nodes.length) return
+      const first = nodes[0]
+      const last = nodes[nodes.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKey)
+    const timer = window.setTimeout(() => {
+      const first = dialogRef.current?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+      first?.focus()
+    }, 0)
+
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previousOverflow
+      window.clearTimeout(timer)
+      previous?.focus()
+    }
+  }, [open])
+
   if (!open) return null
   return (
     <div
@@ -352,6 +416,10 @@ export function Modal({
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={`card anim-pop max-h-[88dvh] w-full overflow-y-auto rounded-b-none p-5 sm:rounded-lg ${
           wide ? 'sm:max-w-2xl' : 'sm:max-w-md'
         }`}

@@ -5,9 +5,10 @@ const strArr = z
   .array(z.string().trim().min(1).max(60))
   .max(30)
   .optional()
-  .transform((v) => v ?? [])
+  .transform((v) => [...new Set(v ?? [])])
 
-export const itemCreateSchema = z.object({
+/** 条目字段（不带 default）：create 再补默认值，update 用 partial 只处理实际提交的字段 */
+const itemFields = {
   title: z.string().trim().min(1, '标题不能为空').max(200),
   category: z.string().trim().min(1, '类别不能为空').max(40),
   year: z.number().int().min(1850).max(2100).nullish().transform((v) => v ?? null),
@@ -17,36 +18,59 @@ export const itemCreateSchema = z.object({
   authors: strArr,
   directors: strArr,
   actors: strArr,
-  status: z.enum(STATUSES).default('want'),
-  progress: z.string().trim().max(500).default(''),
+  status: z.enum(STATUSES),
+  progress: z.string().trim().max(500),
   episode_count: z.number().int().min(1).max(100000).nullish().transform((v) => v ?? null),
   rating: z.number().int().min(1).max(5).nullish().transform((v) => v ?? null),
   cover_url: z
     .string()
     .trim()
     .max(600)
-    .refine((v) => v === '' || /^https?:\/\//.test(v), '封面必须是 http(s) 链接')
-    .default(''),
-  channel: z.string().trim().max(60).default(''),
+    .refine((v) => v === '' || /^https?:\/\//.test(v), '封面必须是 http(s) 链接'),
+  channel: z.string().trim().max(60),
   finish_status: z.enum(FINISH_STATUSES).nullish().transform((v) => v ?? null),
-  notes: z.string().trim().max(5000).default(''),
-  review: z.string().trim().max(5000).default(''),
+  notes: z.string().trim().max(5000),
+  review: z.string().trim().max(5000),
   tmdb_id: z.string().trim().max(32).nullish().transform((v) => v ?? null),
+}
+
+export const itemCreateSchema = z.object({
+  ...itemFields,
+  status: itemFields.status.default('want'),
+  progress: itemFields.progress.default(''),
+  cover_url: itemFields.cover_url.default(''),
+  channel: itemFields.channel.default(''),
+  notes: itemFields.notes.default(''),
+  review: itemFields.review.default(''),
 })
 
-export const itemUpdateSchema = itemCreateSchema.partial()
+/** 注意：不能直接 itemCreateSchema.partial()——Zod 4 会保留 default，
+ *  只传 status 的 PUT 会把 progress/封面/备注/观后感等一起重置为空 */
+export const itemUpdateSchema = z.object(itemFields).partial()
 
 export const viewingCreateSchema = z.object({
-  watched_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式应为 YYYY-MM-DD'),
+  watched_on: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式应为 YYYY-MM-DD')
+    .refine((v) => {
+      const d = new Date(v + 'T00:00:00Z')
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
+    }, '日期不存在'),
   comment: z.string().trim().max(2000).default(''),
 })
 
-export const listCreateSchema = z.object({
+const listFields = {
   name: z.string().trim().min(1, '清单名不能为空').max(100),
-  description: z.string().trim().max(500).default(''),
+  description: z.string().trim().max(500),
+}
+
+export const listCreateSchema = z.object({
+  ...listFields,
+  description: listFields.description.default(''),
 })
 
-export const listUpdateSchema = listCreateSchema.partial()
+/** 同上：更新不能带 default，否则只改名字会清空描述 */
+export const listUpdateSchema = z.object(listFields).partial()
 
 export const listAddItemsSchema = z.object({
   item_ids: z.array(z.number().int().positive()).min(1).max(200),
@@ -57,7 +81,10 @@ export const listOrderSchema = z.object({
 })
 
 export const fieldRenameSchema = z.object({
-  from: z.union([z.string().trim().min(1), z.array(z.string().trim().min(1)).min(1)]),
+  from: z.union([
+    z.string().trim().min(1).max(60),
+    z.array(z.string().trim().min(1).max(60)).min(1).max(100),
+  ]),
   to: z.string().trim().max(60),
 })
 
@@ -81,7 +108,7 @@ export const autofillPreviewSchema = z.object({
 export const autofillApplySchema = z.object({
   item_id: z.number().int().positive(),
   source: autofillSourceSchema,
-  external_id: z.string().trim().min(1).max(40),
+  external_id: z.string().trim().min(1).max(40).regex(/^\d+$/, '外部 ID 必须是数字'),
   fields: z.array(z.string().trim().min(1).max(40)).min(1, '至少选择一个要补全的字段').max(10),
   /** true 时允许覆盖已有值（默认只填空位） */
   overwrite: z.boolean().optional(),
@@ -90,7 +117,7 @@ export const autofillApplySchema = z.object({
 export const autofillFieldOptionsSchema = z.object({
   item_id: z.number().int().positive(),
   source: autofillSourceSchema,
-  external_id: z.string().trim().min(1).max(40),
+  external_id: z.string().trim().min(1).max(40).regex(/^\d+$/, '外部 ID 必须是数字'),
 })
 
 export const autofillUndoSchema = z.object({ log_id: z.number().int().positive() })

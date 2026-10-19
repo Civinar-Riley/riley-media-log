@@ -15,7 +15,8 @@ const app = new Hono<{ Bindings: Env }>()
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse()
   console.error('API 错误:', err)
-  return c.json({ error: err instanceof Error ? err.message : '服务器开小差了' }, 500)
+  // 不把 SQL/内部实现细节返回给客户端
+  return c.json({ error: '服务器开小差了，请稍后重试' }, 500)
 })
 
 // 演示站模式：拦截改密码与设置类写操作（数据每两天自动重置，防止被玩坏）。
