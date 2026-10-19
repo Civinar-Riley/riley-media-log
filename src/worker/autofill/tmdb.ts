@@ -163,8 +163,33 @@ export function seasonFromTitle(title: string): number | null {
 
 /** 去掉标题里的季号，用于 TMDB 搜索（TMDB 的剧集条目不分季，带季号会搜空） */
 export function stripSeasonMarker(title: string): string {
-  const cleaned = title.replace(SEASON_RE, ' ').replace(/\s+/g, ' ').trim()
+  const cleaned = title
+    .replace(SEASON_RE, ' ')
+    .replace(/[（(【\[]\s*[）)】\]]/g, ' ') // 清掉只包着季号的空括号
+    .replace(/\s+/g, ' ')
+    .trim()
   return cleaned || title.trim()
+}
+
+/** 括号里的版本/地区/语言/年份说明：无耻之徒(美版) / 某某（普通话版） / 某某（2024） */
+const PAREN_RE = /[（(【\[]\s*([^）)】\]]{1,16})\s*[）)】\]]/g
+const QUALIFIER_HINT =
+  /(?:版|语|配音|字幕|TV|剧场|电影|电视剧|动画|真人|普通话|粤语|国语|英语|日语|韩语|中配|日配|台配|原声)/i
+const REGION_EXACT = /^(?:美|英|日|韩|港|台|中国|美国|英国|日本|韩国|香港|台湾|大陆|内地|中国大陆|中国香港|中国台湾)$/
+const YEAR_EXACT = /^\d{4}年?$/
+
+function isQualifier(inner: string): boolean {
+  const s = inner.trim()
+  return QUALIFIER_HINT.test(s) || REGION_EXACT.test(s) || YEAR_EXACT.test(s)
+}
+
+/** 去掉标题里的括号说明（版本/地区/语言/年份），用于 TMDB 搜索 */
+export function stripTitleQualifiers(title: string): string {
+  return title
+    .replace(PAREN_RE, (full, inner: string) => (isQualifier(inner) ? ' ' : full))
+    .replace(/[（(【\[]\s*[）)】\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 async function tmdbGet(env: Env, path: string, params: Record<string, string> = {}): Promise<TmdbRaw> {
@@ -186,7 +211,8 @@ export function tmdbConfigured(env: Env): boolean {
 
 /** 搜索候选（kind: movie | tv）
  *  season 非空时按「分季条目」处理：标题去掉季号，且不用首播年过滤
- *  （TMDB 的 first_air_date_year 是整剧首播年，分季条目用季份年份会搜空） */
+ *  （TMDB 的 first_air_date_year 是整剧首播年，分季条目用季份年份会搜空）
+ *  带「(美版)」这类括号说明时，先原样搜；搜不到再忽略括号说明重试 */
 export async function tmdbSearch(
   env: Env,
   kind: 'movie' | 'tv',
@@ -197,9 +223,10 @@ export async function tmdbSearch(
   const q = query.trim()
   const isTv = kind === 'tv'
   const seasonNo = isTv ? (season ?? seasonFromTitle(q)) : null
-  const searchQuery = isTv ? stripSeasonMarker(q) : q
+  const baseQuery = isTv ? stripSeasonMarker(q) : q
+  const qualifierFree = isTv ? stripTitleQualifiers(baseQuery) : baseQuery
 
-  const params: Record<string, string> = { query: searchQuery || q, include_adult: 'false' }
+  const params: Record<string, string> = { include_adult: 'false' }
   if (year) {
     if (kind === 'movie') params.year = String(year)
     else if (!seasonNo) params.first_air_date_year = String(year)
@@ -211,16 +238,22 @@ export async function tmdbSearch(
     return results.slice(0, 8)
   }
 
-  let results = await run(params)
-  // 年份对不上时去掉年份再搜一次（首播年与条目年份不一致很常见）
-  if (!results.length && params.first_air_date_year) {
-    const retry = { ...params }
-    delete retry.first_air_date_year
-    results = await run(retry)
-  }
-  // 去掉季号仍搜不到，用原词兜底（极少数标题本身带「季」）
-  if (!results.length && searchQuery !== q) {
-    results = await run({ ...params, query: q })
+  // 依次尝试：去季号（保留括号说明）→ 去括号说明 → 原始查询
+  const queries = [baseQuery || q, qualifierFree, q].filter(
+    (v, i, arr) => Boolean(v) && arr.indexOf(v) === i
+  )
+
+  let results: TmdbRaw[] = []
+  for (const queryText of queries) {
+    const attempt: Record<string, string> = { ...params, query: queryText }
+    results = await run(attempt)
+    // 年份对不上时去掉年份再搜一次（首播年与条目年份不一致很常见）
+    if (!results.length && attempt.first_air_date_year) {
+      const retry = { ...attempt }
+      delete retry.first_air_date_year
+      results = await run(retry)
+    }
+    if (results.length) break
   }
 
   return results.map((r) => ({
