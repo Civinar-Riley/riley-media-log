@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Sparkles, Undo2 } from 'lucide-react'
 import { api } from '../api'
 import { AUTOFILL_FIELD_LABELS } from '../../shared/types'
@@ -36,6 +36,24 @@ export function AutofillDialog({
   const [logId, setLogId] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  // 每次打开都按当前条目重新开始：标题可能刚改过（详情页刷新后 prop 会更新），
+  // 不能沿用组件首次挂载时的旧标题/旧候选
+  useEffect(() => {
+    if (!open) return
+    setStep('search')
+    setSource(defaultSourceFor(item.category))
+    setQuery(item.title)
+    setCandidates([])
+    setPicked(null)
+    setOptions(null)
+    setChecked({})
+    setApplied(null)
+    setSkipped([])
+    setLogId(null)
+    setBusy(false)
+    setError('')
+  }, [open, item.title, item.category])
 
   function fail(e: unknown) {
     setError(e instanceof Error ? e.message : '请求失败')
@@ -176,6 +194,12 @@ export function AutofillDialog({
                         {c.year ? <span className="ml-1 text-xs text-faint">{c.year}</span> : null}
                         {c.rating ? <span className="ml-1.5 text-xs text-brand">★ {c.rating.toFixed(1)}</span> : null}
                       </span>
+                      {c.seasonEpisodeCount != null && (
+                        <span className="mt-0.5 inline-flex items-center rounded border border-line px-1.5 py-0.5 text-[11px] text-soft">
+                          第 {c.seasonNumber ?? item.season} 季 · {c.seasonEpisodeCount} 集
+                          {c.seasonYear ? ` · ${c.seasonYear} 年` : ''}
+                        </span>
+                      )}
                       {c.overview && <span className="block truncate text-xs text-faint">{c.overview}</span>}
                     </span>
                   </button>

@@ -11,6 +11,10 @@ export interface TmdbCandidate {
   coverThumb: string | null
   overview: string
   rating: number | null
+  /** 分季条目的季号 / 该季集数 / 该季开播年份（仅预览候选时附带，拿不到为 null） */
+  seasonNumber?: number | null
+  seasonEpisodeCount?: number | null
+  seasonYear?: number | null
 }
 
 export interface TmdbDetails {
@@ -209,6 +213,22 @@ export function tmdbConfigured(env: Env): boolean {
   return Boolean(env.TMDB_API_KEY)
 }
 
+/** 某一季的集数与开播年份（用于搜索候选预览；拿不到返回 null） */
+async function tmdbSeasonInfo(
+  env: Env,
+  tvId: string,
+  season: number
+): Promise<{ episodes: number | null; year: number | null } | null> {
+  try {
+    const raw = await tmdbGet(env, `/tv/${tvId}/season/${season}`)
+    const eps = raw.episodes?.length ?? raw.episode_count
+    const year = parseInt((raw.air_date ?? '').slice(0, 4), 10) || null
+    return { episodes: eps && eps > 0 ? eps : null, year }
+  } catch {
+    return null
+  }
+}
+
 /** 搜索候选（kind: movie | tv）
  *  season 非空时按「分季条目」处理：标题去掉季号，且不用首播年过滤
  *  （TMDB 的 first_air_date_year 是整剧首播年，分季条目用季份年份会搜空）
@@ -256,7 +276,7 @@ export async function tmdbSearch(
     if (results.length) break
   }
 
-  return results.map((r) => ({
+  const candidates: TmdbCandidate[] = results.map((r) => ({
     externalId: String(r.id),
     title: (r.title ?? r.name ?? '').trim(),
     year: parseInt(((r.release_date ?? r.first_air_date ?? '') + '0000').slice(0, 4), 10) || null,
@@ -264,6 +284,20 @@ export async function tmdbSearch(
     overview: (r.overview ?? '').slice(0, 120),
     rating: typeof r.vote_average === 'number' && r.vote_average > 0 ? r.vote_average : null,
   }))
+
+  // 分季条目：候选列表直接带上该季集数，避免必须点进字段页才知道对不对
+  if (isTv && seasonNo) {
+    await Promise.all(
+      candidates.map(async (c) => {
+        const info = await tmdbSeasonInfo(env, c.externalId, seasonNo)
+        c.seasonNumber = seasonNo
+        c.seasonEpisodeCount = info?.episodes ?? null
+        c.seasonYear = info?.year ?? null
+      })
+    )
+  }
+
+  return candidates
 }
 
 /** 拉取详情并映射到本项目的字段（只返回源上有值的字段）

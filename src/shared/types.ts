@@ -120,6 +120,10 @@ export interface AutofillCandidate {
   coverThumb: string | null
   overview: string
   rating: number | null
+  /** 分季条目的季号 / 该季集数 / 该季开播年份（仅影视候选预览时附带） */
+  seasonNumber?: number | null
+  seasonEpisodeCount?: number | null
+  seasonYear?: number | null
 }
 
 export interface AutofillFieldOption {
