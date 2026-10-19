@@ -110,11 +110,61 @@ interface TmdbRaw {
   production_countries?: { iso_3166_1: string }[]
   origin_country?: string[]
   number_of_episodes?: number
+  number_of_seasons?: number
+  seasons?: { season_number: number; episode_count?: number; air_date?: string | null }[]
+  // 季详情（/tv/{id}/season/{n}）返回的字段
+  air_date?: string | null
+  episode_count?: number
+  episodes?: { episode_number?: number }[]
   created_by?: { name: string }[]
   credits?: {
     crew?: { job: string; name: string }[]
     cast?: { name: string }[]
   }
+}
+
+/** 中文数字（季号常见写法：第一季 / 第十二季 / 第二十三季） */
+const CN_NUM: Record<string, number> = {
+  零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4,
+  五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
+}
+
+function cnNumber(s: string): number | null {
+  if (/^\d+$/.test(s)) return Number(s)
+  let total = 0
+  let current = 0
+  for (const ch of s) {
+    if (ch === '百') {
+      total += (current || 1) * 100
+      current = 0
+    } else if (ch === '十') {
+      total += (current || 1) * 10
+      current = 0
+    } else if (ch in CN_NUM) {
+      current = CN_NUM[ch]
+    } else {
+      return null
+    }
+  }
+  return total + current
+}
+
+/** 标题里的季号：第（01）季 / 第1季 / 第一季 / Season 2 / S02 */
+const SEASON_RE =
+  /(?:第\s*[（(]?\s*(\d{1,3}|[零〇一二两三四五六七八九十百]+)\s*[）)]?\s*季)|(?:\bseason\s*(\d{1,3})\b)|(?:\bS(\d{1,3})\b)/i
+
+/** 从标题里解析季号（解析不出返回 null） */
+export function seasonFromTitle(title: string): number | null {
+  const m = title.match(SEASON_RE)
+  if (!m) return null
+  const n = cnNumber(m[1] ?? m[2] ?? m[3])
+  return n !== null && n >= 1 && n <= 200 ? n : null
+}
+
+/** 去掉标题里的季号，用于 TMDB 搜索（TMDB 的剧集条目不分季，带季号会搜空） */
+export function stripSeasonMarker(title: string): string {
+  const cleaned = title.replace(SEASON_RE, ' ').replace(/\s+/g, ' ').trim()
+  return cleaned || title.trim()
 }
 
 async function tmdbGet(env: Env, path: string, params: Record<string, string> = {}): Promise<TmdbRaw> {
@@ -134,21 +184,46 @@ export function tmdbConfigured(env: Env): boolean {
   return Boolean(env.TMDB_API_KEY)
 }
 
-/** 搜索候选（kind: movie | tv） */
+/** 搜索候选（kind: movie | tv）
+ *  season 非空时按「分季条目」处理：标题去掉季号，且不用首播年过滤
+ *  （TMDB 的 first_air_date_year 是整剧首播年，分季条目用季份年份会搜空） */
 export async function tmdbSearch(
   env: Env,
   kind: 'movie' | 'tv',
   query: string,
-  year?: number
+  year?: number,
+  season?: number | null
 ): Promise<TmdbCandidate[]> {
-  const params: Record<string, string> = { query, include_adult: 'false' }
+  const q = query.trim()
+  const isTv = kind === 'tv'
+  const seasonNo = isTv ? (season ?? seasonFromTitle(q)) : null
+  const searchQuery = isTv ? stripSeasonMarker(q) : q
+
+  const params: Record<string, string> = { query: searchQuery || q, include_adult: 'false' }
   if (year) {
     if (kind === 'movie') params.year = String(year)
-    else params.first_air_date_year = String(year)
+    else if (!seasonNo) params.first_air_date_year = String(year)
   }
-  const raw = await tmdbGet(env, `/search/${kind}`, params)
-  const results = (raw as unknown as { results?: TmdbRaw[] }).results ?? []
-  return results.slice(0, 8).map((r) => ({
+
+  const run = async (p: Record<string, string>) => {
+    const raw = await tmdbGet(env, `/search/${kind}`, p)
+    const results = (raw as unknown as { results?: TmdbRaw[] }).results ?? []
+    return results.slice(0, 8)
+  }
+
+  let results = await run(params)
+  // 年份对不上时去掉年份再搜一次（首播年与条目年份不一致很常见）
+  if (!results.length && params.first_air_date_year) {
+    const retry = { ...params }
+    delete retry.first_air_date_year
+    results = await run(retry)
+  }
+  // 去掉季号仍搜不到，用原词兜底（极少数标题本身带「季」）
+  if (!results.length && searchQuery !== q) {
+    results = await run({ ...params, query: q })
+  }
+
+  return results.map((r) => ({
     externalId: String(r.id),
     title: (r.title ?? r.name ?? '').trim(),
     year: parseInt(((r.release_date ?? r.first_air_date ?? '') + '0000').slice(0, 4), 10) || null,
@@ -158,17 +233,21 @@ export async function tmdbSearch(
   }))
 }
 
-/** 拉取详情并映射到本项目的字段（只返回源上有值的字段） */
+/** 拉取详情并映射到本项目的字段（只返回源上有值的字段）
+ *  season 非空时，集数 / 年份 / 封面优先取该季的数据：
+ *  TMDB 的整剧 number_of_episodes 是各季总和，不能直接填给单季条目 */
 export async function tmdbDetails(
   env: Env,
   kind: 'movie' | 'tv',
-  externalId: string
+  externalId: string,
+  season?: number | null
 ): Promise<TmdbDetails> {
   const raw = await tmdbGet(env, `/${kind}/${externalId}`, { append_to_response: 'credits' })
   const date = raw.release_date ?? raw.first_air_date ?? ''
   const year = parseInt(date.slice(0, 4), 10) || undefined
   const genreMap = kind === 'movie' ? MOVIE_GENRES : TV_GENRES
   const fields: TmdbDetails['fields'] = {}
+  const seasonNo = kind === 'tv' && season && season > 0 ? season : null
 
   if (raw.poster_path) fields.cover_url = `${IMG_BASE}${raw.poster_path}`
   if (year) fields.year = year
@@ -190,10 +269,36 @@ export async function tmdbDetails(
   }
   const cast = (raw.credits?.cast ?? []).map((p) => p.name)
   if (cast.length) fields.actors = cast.slice(0, 3)
-  if (kind === 'tv' && raw.number_of_episodes) fields.episode_count = raw.number_of_episodes
+
+  let displayTitle = (raw.title ?? raw.name ?? '').trim()
+  if (seasonNo) {
+    displayTitle = `${displayTitle} · 第 ${seasonNo} 季`
+    let seasonRaw: TmdbRaw | null = null
+    try {
+      seasonRaw = await tmdbGet(env, `/tv/${externalId}/season/${seasonNo}`)
+    } catch {
+      seasonRaw = null // 季数据拿不到时退回整剧数据（仅单季剧安全）
+    }
+    if (seasonRaw) {
+      const eps = seasonRaw.episodes?.length ?? seasonRaw.episode_count
+      if (eps && eps > 0) fields.episode_count = eps
+      const seasonYear = parseInt((seasonRaw.air_date ?? '').slice(0, 4), 10) || undefined
+      if (seasonYear) fields.year = seasonYear
+      else if (seasonNo > 1) delete fields.year // 多季剧的首播年不能代表该季
+      if (seasonRaw.poster_path) fields.cover_url = `${IMG_BASE}${seasonRaw.poster_path}`
+    } else {
+      if (raw.number_of_seasons === 1 && raw.number_of_episodes) {
+        fields.episode_count = raw.number_of_episodes
+      } else if (seasonNo > 1) {
+        delete fields.year
+      }
+    }
+  } else if (kind === 'tv' && raw.number_of_episodes) {
+    fields.episode_count = raw.number_of_episodes
+  }
 
   return {
-    displayTitle: (raw.title ?? raw.name ?? '').trim(),
+    displayTitle,
     overview: (raw.overview ?? '').slice(0, 200),
     rating: typeof raw.vote_average === 'number' && raw.vote_average > 0 ? raw.vote_average : null,
     fields,

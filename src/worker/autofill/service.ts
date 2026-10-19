@@ -2,10 +2,17 @@
 import { parseArr } from '../db'
 import type { CategoryDef } from '../../shared/types'
 import { AUTOFILL_FIELD_LABELS } from '../../shared/types'
-import { tmdbSearch, tmdbDetails, tmdbConfigured } from './tmdb'
+import { tmdbSearch, tmdbDetails, tmdbConfigured, seasonFromTitle } from './tmdb'
 import { bgmSearch, bgmDetails, bgmConfigured, bgmSubjectType } from './bangumi'
 
 export type AutofillSource = 'tmdb' | 'bangumi'
+
+/** 条目的有效季号：优先用 season 字段，没有则从标题「第 N 季」里解析 */
+export function itemSeason(item: Record<string, unknown>, titleOverride?: string): number | null {
+  const s = item.season
+  if (typeof s === 'number' && s > 0) return s
+  return seasonFromTitle(titleOverride ?? (item.title as string) ?? '')
+}
 
 /** 类别 → 默认数据源：影视走 TMDB，书漫走 Bangumi */
 export function defaultSource(category: string): AutofillSource {
@@ -83,7 +90,7 @@ export async function applyAutofill(
   try {
     details =
       source === 'tmdb'
-        ? await tmdbDetails(env, item.category === 'movie' ? 'movie' : 'tv', externalId)
+        ? await tmdbDetails(env, item.category === 'movie' ? 'movie' : 'tv', externalId, itemSeason(item))
         : await bgmDetails(env, externalId)
   } catch (e) {
     return { error: e instanceof Error ? e.message : '外部数据源请求失败' }
@@ -232,7 +239,7 @@ export async function autofillFieldOptions(
   try {
     details =
       source === 'tmdb'
-        ? await tmdbDetails(env, item.category === 'movie' ? 'movie' : 'tv', externalId)
+        ? await tmdbDetails(env, item.category === 'movie' ? 'movie' : 'tv', externalId, itemSeason(item))
         : await bgmDetails(env, externalId)
   } catch (e) {
     return { error: e instanceof Error ? e.message : '外部数据源请求失败' }
@@ -260,13 +267,14 @@ export async function searchCandidates(
   category: string,
   source: AutofillSource | undefined,
   query: string,
-  year?: number
+  year?: number,
+  season?: number | null
 ): Promise<{ source: AutofillSource; candidates: unknown[] }> {
   const src: AutofillSource = source ?? defaultSource(category)
   if (src === 'tmdb') {
     if (!tmdbConfigured(env)) throw new Error('未配置 TMDB_API_KEY，请在 Cloudflare 后台设置后重试')
     const kind = category === 'movie' ? 'movie' : 'tv'
-    return { source: src, candidates: await tmdbSearch(env, kind, query, year) }
+    return { source: src, candidates: await tmdbSearch(env, kind, query, year, season) }
   }
   const type = bgmSubjectType(category)
   return { source: src, candidates: await bgmSearch(env, query, type) }

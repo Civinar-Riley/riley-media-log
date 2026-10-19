@@ -14,6 +14,7 @@ import {
   sourceConfigured,
   undoAutofill,
   defaultSource,
+  itemSeason,
   AUTOFILL_FIELDS,
 } from '../autofill/service'
 
@@ -48,7 +49,14 @@ autofillRoutes.post('/preview', async (c) => {
   else if (typeof data.year === 'number') year = data.year
   else if (typeof item.year === 'number') year = item.year
   try {
-    const { candidates } = await searchCandidates(c.env, category, source, query, year)
+    const { candidates } = await searchCandidates(
+      c.env,
+      category,
+      source,
+      query,
+      year,
+      itemSeason(item, query)
+    )
     return c.json({ source, candidates })
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : '搜索失败', source }, 502)

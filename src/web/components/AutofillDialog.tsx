@@ -137,6 +137,11 @@ export function AutofillDialog({
 
       {step === 'search' && (
         <div>
+          {item.season ? (
+            <p className="mb-2 text-xs text-faint">
+              该条目是第 {item.season} 季：搜索会自动忽略标题里的季号，集数 / 年份按该季单独获取。
+            </p>
+          ) : null}
           <div className="mb-3 flex gap-2">
             <input
               className="input"

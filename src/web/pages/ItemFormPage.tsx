@@ -33,7 +33,8 @@ interface FormState {
   channel: string
   finish_status: FinishStatus | null
   cover_url: string
-  progress: string
+  progressNum: string
+  progressLegacy: string
   notes: string
   review: string
   tmdb_id: string
@@ -55,7 +56,8 @@ const EMPTY: FormState = {
   channel: '',
   finish_status: null,
   cover_url: '',
-  progress: '',
+  progressNum: '',
+  progressLegacy: '',
   notes: '',
   review: '',
   tmdb_id: '',
@@ -68,7 +70,26 @@ function numOrNull(v: string): number | null {
   return Number.isFinite(n) ? Math.trunc(n) : null
 }
 
+/** 进度单位：综艺按期、小说按章、漫画按话，其余按集 */
+function progressUnit(category: string): string {
+  if (category === 'variety') return '期'
+  if (category === 'novel') return '章'
+  if (category === 'manga') return '话'
+  return '集'
+}
+
+/** 老数据兼容：标准格式或纯数字取出数字，其他原文保留（保存时原样带回） */
+function parseProgress(raw: string): { num: string; legacy: string } {
+  const s = raw.trim()
+  if (!s) return { num: '', legacy: '' }
+  const m = s.match(/^看到第\s*(\d+)\s*[集期话章]$/)
+  if (m) return { num: m[1], legacy: '' }
+  if (/^\d+$/.test(s)) return { num: s, legacy: '' }
+  return { num: '', legacy: s }
+}
+
 function toForm(item: Item): FormState {
+  const progress = parseProgress(item.progress)
   return {
     title: item.title,
     category: item.category,
@@ -85,7 +106,8 @@ function toForm(item: Item): FormState {
     channel: item.channel,
     finish_status: item.finish_status,
     cover_url: item.cover_url,
-    progress: item.progress,
+    progressNum: progress.num,
+    progressLegacy: progress.legacy,
     notes: item.notes,
     review: item.review,
     tmdb_id: item.tmdb_id ?? '',
@@ -164,7 +186,9 @@ export default function ItemFormPage() {
         channel: form.channel.trim(),
         finish_status: form.finish_status,
         cover_url: form.cover_url.trim(),
-        progress: form.progress.trim(),
+        progress: form.progressNum
+          ? `看到第 ${form.progressNum} ${progressUnit(form.category)}`
+          : form.progressLegacy,
         notes: form.notes.trim(),
         review: form.review.trim(),
         tmdb_id: form.tmdb_id.trim() || null,
@@ -322,12 +346,43 @@ export default function ItemFormPage() {
           </div>
           <div>
             <label className="label mb-1.5 block">观看进度</label>
-            <input
-              className="input"
-              value={form.progress}
-              onChange={(e) => set('progress', e.target.value)}
-              placeholder="如 看到第 8 集"
-            />
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-sm text-soft">看到第</span>
+              <input
+                className="input w-24 text-center"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={form.progressNum}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 6)
+                  setForm((f) => ({
+                    ...f,
+                    progressNum: digits,
+                    progressLegacy: digits ? '' : f.progressLegacy,
+                  }))
+                }}
+                placeholder="8"
+              />
+              <span className="shrink-0 text-sm text-soft">{progressUnit(form.category)}</span>
+              {form.episode_count && (
+                <span className="ml-auto shrink-0 text-xs text-faint">
+                  共 {form.episode_count} {progressUnit(form.category)}
+                </span>
+              )}
+            </div>
+            {form.progressLegacy && (
+              <p className="mt-1 text-xs text-faint">
+                原进度「{form.progressLegacy}」不是纯数字，填数字后会替换。
+                <button
+                  type="button"
+                  className="ml-1 text-brand hover:underline"
+                  onClick={() => setForm((f) => ({ ...f, progressLegacy: '' }))}
+                >
+                  清除
+                </button>
+              </p>
+            )}
           </div>
         </div>
 
