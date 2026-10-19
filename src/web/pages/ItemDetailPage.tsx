@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarPlus, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { CalendarPlus, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { api } from '../api'
 import { CategoryBadge, CoverImage, FinishBadge, Loading, Modal, PageHeader, RatingStars, StatusBadge } from '../components/ui'
 import { AutofillDialog } from '../components/AutofillDialog'
@@ -105,6 +105,18 @@ export default function ItemDetailPage() {
         title="条目详情"
         right={
           <>
+            <button
+              className="btn"
+              title="重新拉取条目数据"
+              disabled={itemQ.isFetching}
+              onClick={() => {
+                void itemQ.refetch()
+                void listsQ.refetch()
+              }}
+            >
+              <RefreshCw className={`h-4 w-4 ${itemQ.isFetching ? 'animate-spin' : ''}`} />
+              刷新
+            </button>
             <button className="btn" onClick={() => navigate(`/items/${itemId}/edit`)}>
               <Pencil className="h-4 w-4" />
               编辑
