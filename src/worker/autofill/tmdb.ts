@@ -24,6 +24,7 @@ export interface TmdbDetails {
   overview: string
   rating: number | null
   fields: {
+    title?: string
     cover_url?: string
     year?: number
     regions?: string[]
@@ -333,6 +334,8 @@ export async function tmdbDetails(
   if (cast.length) fields.actors = cast.slice(0, 3)
 
   let displayTitle = (raw.title ?? raw.name ?? '').trim()
+  // 官方标题也作为可补全字段（覆盖组）：记的时候只记得简称/关键字，补全时换回全名
+  if (displayTitle) fields.title = displayTitle
   if (seasonNo) {
     displayTitle = `${displayTitle} · 第 ${seasonNo} 季`
     const seasonMeta = raw.seasons?.find((s) => s.season_number === seasonNo)

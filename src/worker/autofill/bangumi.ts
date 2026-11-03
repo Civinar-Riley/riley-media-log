@@ -18,6 +18,7 @@ export interface BgmDetails {
   overview: string
   rating: number | null
   fields: {
+    title?: string
     cover_url?: string
     year?: number
     regions?: string[]
@@ -156,9 +157,12 @@ export async function bgmDetails(env: Env, externalId: string): Promise<BgmDetai
   const cv = infoboxValue(raw, ['声优', '主演'])
   if (cv.length) fields.actors = cv.slice(0, 3)
   if (raw.eps) fields.episode_count = raw.eps
+  // 官方标题也作为可补全字段（覆盖组）：记的时候只记得简称/关键字，补全时换回全名
+  const rawTitle = (raw.name_cn || raw.name || '').trim()
+  if (rawTitle) fields.title = rawTitle
 
   return {
-    displayTitle: (raw.name_cn || raw.name || '').trim(),
+    displayTitle: rawTitle,
     overview: (raw.summary ?? '').slice(0, 200),
     rating: typeof raw.rating?.score === 'number' && raw.rating.score > 0 ? raw.rating.score : null,
     fields,

@@ -1,0 +1,9 @@
+-- 搜索归一化：search_norm = 标题去掉标点/空白并转小写
+-- 用于「标题里的几个字搜不到」：查询词先归一化再 LIKE 本列，
+-- 如「BEN 10：终极异形 第（01）季」→ ben10终极异形第01季，
+-- 搜 ben10 终极 / 第01季 都能命中。
+-- VIRTUAL 生成列由 SQLite 自动计算，任何写入路径都无需维护
+-- （SQLite 限制：ALTER TABLE 只能加 VIRTUAL 生成列，不能加 STORED）
+ALTER TABLE items ADD COLUMN search_norm TEXT GENERATED ALWAYS AS (
+  lower(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(title, char(9), ''), char(10), ''), char(13), ''), ' ', ''), ' ', ''), '　', ''), '！', ''), '？', ''), '。', ''), '，', ''), '、', ''), '．', ''), '：', ''), '；', ''), '·', ''), '・', ''), '—', ''), '–', ''), '―', ''), '－', ''), '~', ''), '-', ''), '～', ''), '!', ''), '?', ''), ',', ''), '.', ''), ':', ''), ';', ''), '（', ''), '）', ''), '(', ''), ')', ''), '「', ''), '」', ''), '『', ''), '』', ''), '【', ''), '】', ''), '[', ''), ']', ''), '《', ''), '》', ''), '〈', ''), '〉', ''), '{', ''), '}', ''), '“', ''), '”', ''), '‘', ''), '’', ''), '"', ''), '''', ''), '／', ''), '/', ''), '＼', ''), '\', ''), '＋', ''), '＊', ''), '＆', ''), '｜', ''), '＿', ''), '％', ''), '＃', ''), '＠', ''), '＝', ''), '＜', ''), '＞', ''), '￥', ''), '$', ''), '^', ''), '=', ''), '<', ''), '>', ''), '|', ''), '*', ''), '&', ''), '+', ''), '#', ''), '@', ''), '_', ''), '%', ''))
+) VIRTUAL;

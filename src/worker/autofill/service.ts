@@ -2,6 +2,7 @@
 import { parseArr } from '../db'
 import type { AutofillCandidate, CategoryDef } from '../../shared/types'
 import { AUTOFILL_FIELD_LABELS } from '../../shared/types'
+import { toPinyinText, toPinyinInitial } from '../pinyin'
 import { tmdbSearch, tmdbDetails, tmdbConfigured } from './tmdb'
 import { bgmSearch, bgmDetails, bgmConfigured, bgmSubjectType } from './bangumi'
 import { seasonFromTitle } from '../../shared/season'
@@ -30,9 +31,10 @@ export const AUTOFILL_SOURCE_LABEL: Record<AutofillSource, string> = {
   bangumi: 'Bangumi',
 }
 
-/** 自动补全允许触碰的字段（备注/观后感/个人评分永不触碰；外部评分单独列出） */
+/** 自动补全允许触碰的字段（备注/观后感/个人评分永不触碰；外部评分单独列出）
+ *  title 在这里表示「官方全名替换随手记的简称」，永远有值 → 只会出现在弹窗的覆盖组 */
 export const AUTOFILL_FIELDS = [
-  'cover_url', 'year', 'regions', 'tags', 'directors', 'actors', 'authors', 'episode_count',
+  'title', 'cover_url', 'year', 'regions', 'tags', 'directors', 'actors', 'authors', 'episode_count',
   'external_rating',
 ] as const
 
@@ -124,6 +126,12 @@ export async function applyAutofill(
     logFields[field] = { before: hasValue ? current : normalizeValue(field, null), after: value }
   }
 
+  // 补了标题就得同步拼音列，否则拼音搜索/排序还指向旧读音（派生值，不进快照）
+  if (typeof patch.title === 'string' && patch.title.trim()) {
+    patch.pinyin = toPinyinText(patch.title)
+    patch.pinyin_initial = toPinyinInitial(patch.title)
+  }
+
   // 外部 ID 留档（tmdb_id / bgm_id）；覆盖模式下也允许换成新候选的 ID
   const idColumn = source === 'tmdb' ? 'tmdb_id' : 'bgm_id'
   const currentId = item[idColumn as keyof typeof item]
@@ -150,7 +158,7 @@ export async function applyAutofill(
   vals.push(now)
 
   const appliedNames = Object.keys(patch)
-    .filter((k) => k !== 'external_rating' && k !== 'tmdb_id' && k !== 'bgm_id')
+    .filter((k) => !['external_rating', 'tmdb_id', 'bgm_id', 'pinyin', 'pinyin_initial'].includes(k))
     .join('、')
 
   // 更新、快照、动态一起提交：中途失败不会留下「改了但没法撤回」的状态
@@ -203,7 +211,15 @@ export async function undoAutofill(
   }
 
   const now = new Date().toISOString()
-  if (!Object.keys(restore).length) {
+  // 恢复标题时同步重算拼音列（与 apply 同理；拼音是确定性派生值，不进快照也不算独立字段）
+  if (typeof restore.title === 'string' && restore.title.trim()) {
+    restore.pinyin = toPinyinText(restore.title)
+    restore.pinyin_initial = toPinyinInitial(restore.title)
+  }
+  const restoredNames = Object.keys(restore).filter(
+    (k) => k !== 'pinyin' && k !== 'pinyin_initial'
+  )
+  if (!restoredNames.length) {
     // 没有字段可恢复：不消耗快照，用户处理完冲突后还能再试
     return { restored: [], skipped }
   }
@@ -224,13 +240,13 @@ export async function undoAutofill(
       itemId,
       'autofill',
       `撤回自动补全（${AUTOFILL_SOURCE_LABEL[source] ?? source}）：${
-        skipped.length ? '部分字段' : Object.keys(restore).join('、')
+        skipped.length ? '部分字段' : restoredNames.join('、')
       }已恢复`,
       now
     )
     .run()
 
-  return { restored: Object.keys(restore), skipped }
+  return { restored: restoredNames, skipped }
 }
 
 /** 预检某个候选能提供哪些字段（不写库），供补全弹窗做字段勾选 */

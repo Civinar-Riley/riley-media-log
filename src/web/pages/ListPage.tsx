@@ -536,7 +536,7 @@ export default function ListPage() {
         <input
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
-          placeholder="搜索标题，也支持拼音（如 manchang）"
+          placeholder="搜索标题/拼音，可空格分隔多个关键字"
           className="input h-10 flex-1 text-base md:max-w-md"
         />
         <button

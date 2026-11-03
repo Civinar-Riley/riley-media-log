@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import {
@@ -70,6 +70,17 @@ function numOrNull(v: string): number | null {
   if (!t) return null
   const n = Number(t)
   return Number.isFinite(n) ? Math.trunc(n) : null
+}
+
+/** 放弃保存（查重确认点了取消），不该显示成「保存失败」 */
+class SaveCancelled extends Error {}
+
+/** 保存前的强查重：标题 + 类别 + 季号全一致才算重复（同名不同季是合法的分季记录） */
+async function findDup(title: string, category: string, season: number | null): Promise<Item | undefined> {
+  const d = await api.listItems({ q: title }, 1, 30)
+  return d.items.find(
+    (it) => it.title === title && it.category === category && (it.season ?? null) === (season ?? null)
+  )
 }
 
 /** 进度单位：综艺按期、小说按章、漫画按话，其余按集 */
@@ -181,6 +192,59 @@ export default function ItemFormPage() {
   )
   const actorSuggestions = useMemo(() => facets.data?.actors.map(([v]) => v) ?? [], [facets.data])
 
+  /** 标题自动补全 / 查重：输入防抖后按关键字搜库内条目
+   *  （走服务端搜索，标点归一、多关键字、拼音全都生效），不记得全称时也能找到 */
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const [suggestText, setSuggestText] = useState('')
+  const [hi, setHi] = useState(-1) // 键盘高亮
+  useEffect(() => {
+    const t = setTimeout(() => setSuggestText(form.title.trim()), 250)
+    return () => clearTimeout(t)
+  }, [form.title])
+  const suggestionsQ = useQuery({
+    queryKey: ['title-suggest', suggestText],
+    queryFn: () => api.listItems({ q: suggestText }, 1, 8),
+    enabled: suggestText.length > 0,
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+  })
+  const suggestions = useMemo(() => {
+    const its = suggestionsQ.data?.items ?? []
+    // 编辑模式下不提示自己
+    return editing ? its.filter((it) => it.id !== itemId) : its
+  }, [suggestionsQ.data, editing, itemId])
+  useEffect(() => setHi(-1), [suggestions])
+
+  const titleTrim = form.title.trim()
+  /** 输入内容与库里某条完全同名（记重了的最直观信号；编辑模式不含自己） */
+  const sameTitle = useMemo(
+    () => (titleTrim ? suggestions.filter((it) => it.title === titleTrim) : []),
+    [suggestions, titleTrim]
+  )
+
+  function pickTitle(it: Item) {
+    // 与标题输入框 onChange 同一套季号规则：新标题里的季号优先，其次沿用候选自己的季号
+    const fromTitle = seasonFromTitle(it.title)
+    setForm((f) => ({ ...f, title: it.title, season: String(fromTitle ?? it.season ?? '') }))
+    setSuggestOpen(false)
+  }
+
+  function onTitleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!suggestOpen || !suggestions.length) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHi((h) => Math.min(h + 1, suggestions.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHi((h) => Math.max(h - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      pickTitle(suggestions[hi >= 0 ? hi : 0])
+    } else if (e.key === 'Escape') {
+      setSuggestOpen(false)
+    }
+  }
+
   useEffect(() => {
     if (editing && existing.data) {
       const next = toForm(existing.data)
@@ -227,6 +291,24 @@ export default function ItemFormPage() {
         review: form.review.trim(),
         tmdb_id: form.tmdb_id.trim() || null,
       }
+      if (!editing) {
+        // 保存前查重：同标题 + 同类别 + 同季才拦下来确认，避免手滑记重
+        const dup = await findDup(payload.title, payload.category, payload.season)
+        if (dup) {
+          const desc = [
+            dup.year ? `${dup.year} 年` : '',
+            dup.season ? `第 ${dup.season} 季` : '',
+            STATUS_LABELS[dup.status],
+          ]
+            .filter(Boolean)
+            .join(' · ')
+          if (
+            !window.confirm(`库里已有《${dup.title}》${desc ? `（${desc}）` : ''}，仍要新建一条吗？`)
+          ) {
+            throw new SaveCancelled()
+          }
+        }
+      }
       return editing ? api.updateItem(itemId!, payload) : api.createItem(payload)
     },
     onSuccess: (saved) => {
@@ -241,7 +323,10 @@ export default function ItemFormPage() {
         navigate(`/items/${saved.id}`, { replace: true })
       }
     },
-    onError: (err) => setError(err instanceof Error ? err.message : '保存失败'),
+    onError: (err) => {
+      if (err instanceof SaveCancelled) return
+      setError(err instanceof Error ? err.message : '保存失败')
+    },
   })
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -270,27 +355,94 @@ export default function ItemFormPage() {
           <label className="label mb-1.5 block">
             标题 <span className="text-danger">*</span>
           </label>
-          <input
-            className="input h-11 text-lg"
-            autoFocus={!editing}
-            value={form.title}
-            onChange={(e) => {
-              const title = e.target.value
-              const inTitle = seasonFromTitle(title)
-              setForm((f) => ({
-                ...f,
-                title,
-                // 标题里出现季号 → 同步；原标题的季号被去掉 → 清空（不留上一部的季号）；
-                // 原标题本来没有季号 → 尊重用户手填的值
-                season: inTitle
-                  ? String(inTitle)
-                  : f.season && seasonFromTitle(f.title)
-                    ? ''
-                    : f.season,
-              }))
-            }}
-            placeholder="作品名"
-          />
+          <div className="relative">
+            <input
+              className="input h-11 text-lg"
+              autoFocus={!editing}
+              value={form.title}
+              onChange={(e) => {
+                const title = e.target.value
+                const inTitle = seasonFromTitle(title)
+                setForm((f) => ({
+                  ...f,
+                  title,
+                  // 标题里出现季号 → 同步；原标题的季号被去掉 → 清空（不留上一部的季号）；
+                  // 原标题本来没有季号 → 尊重用户手填的值
+                  season: inTitle
+                    ? String(inTitle)
+                    : f.season && seasonFromTitle(f.title)
+                      ? ''
+                      : f.season,
+                }))
+                setSuggestOpen(true)
+              }}
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={() => setTimeout(() => setSuggestOpen(false), 120)}
+              onKeyDown={onTitleKeyDown}
+              placeholder="作品名，可先输关键字看看库里有没有"
+            />
+            {suggestOpen && titleTrim && suggestions.length > 0 && (
+              <div className="absolute z-20 mt-1.5 w-full overflow-hidden rounded-lg border border-line bg-card shadow-lg">
+                <p className="border-b border-line px-3 py-1.5 text-[11px] text-faint">
+                  库内匹配 · 点标题填入，「查看」另开标签页
+                </p>
+                {suggestions.map((it, i) => (
+                  <div
+                    key={it.id}
+                    className={`flex items-center gap-2 px-2 py-1.5 ${i === hi ? 'bg-muted' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 cursor-pointer text-left"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        pickTitle(it)
+                      }}
+                    >
+                      <span className="block truncate text-sm text-ink">
+                        {it.title}
+                        {it.season ? <span className="ml-1 text-xs text-faint">第{it.season}季</span> : null}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-faint">
+                        {[it.year, STATUS_LABELS[it.status]].filter(Boolean).join(' · ') || '—'}
+                      </span>
+                    </button>
+                    <a
+                      href={`/items/${it.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 px-1.5 text-xs text-brand hover:underline"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setSuggestOpen(false)}
+                    >
+                      查看
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {sameTitle.length > 0 && (
+            <p className="mt-1.5 text-xs leading-5 text-seal">
+              {editing ? '库内另有同名条目：' : '已有同名条目：'}
+              {sameTitle.slice(0, 2).map((it, i) => (
+                <span key={it.id}>
+                  {i > 0 ? '、' : ''}
+                  <Link
+                    to={`/items/${it.id}`}
+                    target="_blank"
+                    className="underline decoration-seal/50 underline-offset-2 hover:decoration-seal"
+                  >
+                    《{it.title}》
+                    {it.season ? `第${it.season}季 ` : ''}
+                    {STATUS_LABELS[it.status]}
+                  </Link>
+                </span>
+              ))}
+              {sameTitle.length > 2 && <> 等 {sameTitle.length} 条</>}
+              {editing ? '。' : '—— 不是同一部的话继续保存即可'}
+            </p>
+          )}
         </div>
 
         <div className="grid gap-5 md:grid-cols-2">
