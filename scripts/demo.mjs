@@ -41,17 +41,60 @@ if (sub === 'deploy') {
     console.error('缺少 DEMO_API_TOKEN：本地请写进 .env，CI 请配 GitHub Secret')
     process.exit(1)
   }
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID
+  const cfToken = process.env.CLOUDFLARE_API_TOKEN
   const host = new URL(DEMO_URL).hostname
   if (!host.includes('demo')) {
     console.error(`拒绝执行：DEMO_URL=${DEMO_URL} 看起来不是演示站（hostname 需包含 demo）`)
     process.exit(1)
   }
-  console.log(`预检 ${DEMO_URL} …`)
-  const preflight = await fetch(`${DEMO_URL}/api/items?page_size=1`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!preflight.ok) {
-    console.error(`预检失败：${preflight.status} ${await preflight.text().catch(() => '')}`)
+
+  // 自定义域可能被 Cloudflare 人机验证拦住（CI 数据中心 IP 常见，403「Just a moment…」），
+  // 此时自动改走 workers.dev 域名：worker 开着 workers_dev，且该域名不在自己 zone 上，不受盾规则影响
+  async function workersDevBase() {
+    if (!account || !cfToken) return null
+    try {
+      const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/subdomain`, {
+        headers: { Authorization: `Bearer ${cfToken}` },
+      })
+      if (!r.ok) return null
+      const { result } = await r.json()
+      if (!result?.subdomain) return null
+      return `https://riley-media-log-demo.${result.subdomain}.workers.dev`
+    } catch {
+      return null
+    }
+  }
+
+  async function preflight(base) {
+    const r = await fetch(`${base}/api/items?page_size=1`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return { ok: r.ok, status: r.status, body: r.ok ? '' : await r.text().catch(() => '') }
+  }
+
+  let base = DEMO_URL
+  let check = await preflight(base)
+  if (!check.ok) {
+    console.log(`预检 ${base} 失败（${check.status}），尝试 workers.dev 域名…`)
+    const alt = await workersDevBase()
+    if (alt) {
+      const altCheck = await preflight(alt)
+      if (altCheck.ok) {
+        base = alt
+        check = altCheck
+        console.log(`已改走 ${base}`)
+      }
+    }
+  }
+  if (!check.ok) {
+    console.error(`预检失败：${check.status} ${check.body.slice(0, 300)}`)
+    if (check.status === 403 && check.body.includes('_cf_chl_opt')) {
+      console.error(
+        '提示：请求被 Cloudflare 人机验证拦截（当前出口 IP 被盾）。' +
+          '可到 Cloudflare 控制台给该域加「跳过」安全规则，或设置 DEMO_URL 指向演示站的 workers.dev 地址。'
+      )
+    }
     process.exit(1)
   }
   const proxyArgs = process.env.DEMO_PROXY ? ['--proxy', process.env.DEMO_PROXY] : []
@@ -60,9 +103,9 @@ if (sub === 'deploy') {
     CLOUDFLARE_ENV: 'demo',
   })
   console.log('② 重灌演示数据…')
-  run(PY, ['scripts/seed_demo.py', '--base', DEMO_URL, '--token', token, '--allow-remote', ...proxyArgs])
+  run(PY, ['scripts/seed_demo.py', '--base', base, '--token', token, '--allow-remote', ...proxyArgs])
   console.log('③ 批量补全封面与主创（只填空位）…')
-  run(PY, ['scripts/backfill.py', '--base', DEMO_URL, '--token', token, '--missing', 'cover_url', '--auto', ...proxyArgs])
+  run(PY, ['scripts/backfill.py', '--base', base, '--token', token, '--missing', 'cover_url', '--auto', ...proxyArgs])
   console.log('✅ 演示站重置完成')
 } else {
   console.error('用法：node scripts/demo.mjs <deploy|reset>')
