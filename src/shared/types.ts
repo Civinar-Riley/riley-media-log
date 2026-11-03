@@ -155,6 +155,7 @@ export interface AutofillLog {
 }
 
 export const AUTOFILL_FIELD_LABELS: Record<string, string> = {
+  title: '标题',
   cover_url: '封面',
   year: '年份',
   regions: '地区',

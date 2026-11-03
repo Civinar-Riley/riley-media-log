@@ -8,6 +8,43 @@ function like(v: string): string {
   return '%' + v.replace(/[\\%_]/g, (m) => '\\' + m) + '%'
 }
 
+/**
+ * 搜索词归一化：去掉标点/空白并转小写，与 items.search_norm 生成列同一套规则
+ * （0007 迁移：标题侧在 SQL 里做同样的剔除），让「BEN 10：终极异形」能被 ben10 终极 搜到。
+ * 注意：两边字符集要保持一致，改这里必须同步改迁移。
+ */
+const STRIP_CHARS = [
+  ' ', '\t', '\n', '\r', ' ', '　',
+  '！', '？', '。', '，', '、', '．', '：', '；', '·', '・', '—', '–', '―', '－', '~', '-', '～',
+  '!', '?', ',', '.', ':', ';',
+  '（', '）', '(', ')', '「', '」', '『', '』', '【', '】', '[', ']', '《', '》', '〈', '〉', '{', '}',
+  '“', '”', '‘', '’', '"', "'",
+  '／', '/', '＼', '\\',
+  '＋', '＊', '＆', '｜', '＿', '％', '＃', '＠', '＝', '＜', '＞', '￥',
+  '$', '^', '=', '<', '>', '|', '*', '&', '+', '#', '@', '_', '%',
+]
+
+export function normalizeSearchTerm(s: string): string {
+  let out = s
+  for (const ch of STRIP_CHARS) out = out.split(ch).join('')
+  return out.toLowerCase()
+}
+
+/** 搜索词 → 匹配条件：按空格拆成多个关键字 AND 组合，每个关键字命中标题（归一化）或拼音即可 */
+function searchCond(q: string): Cond {
+  const terms = [...new Set(q.split(/\s+/).map(normalizeSearchTerm).filter(Boolean))]
+  if (!terms.length) {
+    // 整串都是标点/空白时退回原始子串匹配，避免「搜 · 变成搜全部」
+    return { sql: `(i.title LIKE ? ESCAPE '\\' OR i.pinyin LIKE ? ESCAPE '\\')`, params: [like(q), like(q.toLowerCase())] }
+  }
+  return {
+    sql: terms
+      .map(() => `(i.search_norm LIKE ? ESCAPE '\\' OR i.pinyin LIKE ? ESCAPE '\\')`)
+      .join(' AND '),
+    params: terms.flatMap((t) => [like(t), like(t)]),
+  }
+}
+
 /** JSON 数组字段（tags/regions/creators）的「任一/全部」匹配条件 */
 function jsonFieldCond(field: string, values: string[], mode: 'any' | 'all') {
   const unique = [...new Set(values)]
@@ -44,12 +81,7 @@ export function buildWhere(raw: ItemFilters): Cond {
   }
   const conds: Cond[] = []
 
-  if (f.q) {
-    conds.push({
-      sql: `(i.title LIKE ? ESCAPE '\\' OR i.pinyin LIKE ? ESCAPE '\\')`,
-      params: [like(f.q), like(f.q.toLowerCase())],
-    })
-  }
+  if (f.q) conds.push(searchCond(f.q))
   if (f.category.length) conds.push({ sql: `i.category IN (${f.category.map(() => '?').join(',')})`, params: f.category })
   if (f.status.length) conds.push({ sql: `i.status IN (${f.status.map(() => '?').join(',')})`, params: f.status })
   if (f.year_min !== undefined) conds.push({ sql: 'i.year >= ?', params: [f.year_min] })
