@@ -21,7 +21,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 
 import openpyxl
@@ -134,11 +134,11 @@ def cell(row, idx):
 
 def main():
     wb = openpyxl.load_workbook(XLSX, read_only=True, data_only=True)
-    now = datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     rows_out = []
     stats = {}
     dupes = []
-    seen_keys = set()
+    seen_keys = {}
 
     for sheet_name, default_cat in SHEET_CATEGORY.items():
         if sheet_name not in wb.sheetnames:
@@ -180,10 +180,11 @@ def main():
             review = str(cell(raw, cols.get("review")) or "").strip()
 
             key = (title, year, category)
-            if key in seen_keys:
+            seen_keys[key] = seen_keys.get(key, 0) + 1
+            occurrence = seen_keys[key]  # 该标题+年份+类别在本文件内是第几条
+            if occurrence > 1:
                 dupes.append(f"{sheet_name}:{title}({year})")
                 notes = ("[疑似重复] " + notes).strip()
-            seen_keys.add(key)
 
             season = None
             m = SEASON_RE.search(title)
@@ -200,19 +201,23 @@ def main():
                 f"{sql_str(now)}, {sql_str(now)}"
             )
             where_year = str(year) if year is not None else "-1"
-            # 幂等：同标题+年份+类别已存在就跳过，重复执行不会整库翻倍
+            # 幂等：首条（occurrence=1）同标题+年份+类别已存在就跳过，重复执行不会整库翻倍。
+            # 本文件内第 2 条起的「疑似重复」行必须真的写进去（NOT EXISTS 会命中同文件里的前一条，
+            # 从而把这条的备注/观后感静默丢掉）——所以给它带上 occurrence，库里查不到同序位的行就插入；
+            # 重新跑时库里的第 N 条已存在，仍然幂等。
+            guard = "" if occurrence == 1 else f"AND (SELECT COUNT(*) FROM items WHERE title = {sql_str(title)} AND category = {sql_str(category)} AND COALESCE(year, -1) = {where_year}) >= {occurrence}"
             rows_out.append(
                 f"INSERT INTO items (title, pinyin, pinyin_initial, category, year, season, "
                 f"regions, tags, authors, status, progress, episode_count, rating, cover_url, "
                 f"channel, finish_status, notes, review, tmdb_id, created_at, updated_at) "
                 f"SELECT {values_sql} WHERE NOT EXISTS ("
                 f"SELECT 1 FROM items WHERE title = {sql_str(title)} "
-                f"AND category = {sql_str(category)} AND COALESCE(year, -1) = {where_year});"
+                f"AND category = {sql_str(category)} AND COALESCE(year, -1) = {where_year} {guard});"
             )
             count += 1
         stats[sheet_name] = count
 
-    OUT_SQL.parent.mkdir(exist_ok=True)
+    OUT_SQL.parent.mkdir(parents=True, exist_ok=True)
     # 注意：不能用 BEGIN TRANSACTION 包裹——远程 D1（Durable Objects 存储）会拒绝该语句
     OUT_SQL.write_text("\n".join(rows_out) + "\n", encoding="utf-8")
 
@@ -223,6 +228,7 @@ def main():
         f"疑似重复: {len(dupes)} 条",
         *[f"  {d}" for d in dupes[:30]],
     ]
+    OUT_REPORT.parent.mkdir(parents=True, exist_ok=True)
     OUT_REPORT.write_text("\n".join(lines), encoding="utf-8")
     print("\n".join(lines))
     print(f"\nSQL 已写入 {OUT_SQL}")

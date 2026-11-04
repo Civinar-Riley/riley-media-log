@@ -6,6 +6,11 @@ on:
     - cron: '0 20 */2 * *'
   workflow_dispatch:
 
+# 重置是「清库 → 重灌」多步操作，别让上一次还没跑完又触发下一次（手动+定时撞车时）
+concurrency:
+  group: demo-reset
+  cancel-in-progress: false
+
 jobs:
   reset:
     runs-on: ubuntu-latest

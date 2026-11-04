@@ -15,7 +15,7 @@ const PY = process.platform === 'win32' ? 'python' : 'python3'
 
 // 本地 .env 补全变量（CI 上没有这个文件，变量直接来自 secrets）
 if (existsSync('.env')) {
-  for (const line of readFileSync('.env', 'utf8').split('\n')) {
+  for (const line of readFileSync('.env', 'utf8').split(/\r?\n/)) {
     const m = line.match(/^([A-Z_]+)=(.*)$/)
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim()
   }
@@ -67,10 +67,15 @@ if (sub === 'deploy') {
   }
 
   async function preflight(base) {
-    const r = await fetch(`${base}/api/items?page_size=1`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    return { ok: r.ok, status: r.status, body: r.ok ? '' : await r.text().catch(() => '') }
+    try {
+      const r = await fetch(`${base}/api/items?page_size=1`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      return { ok: r.ok, status: r.status, body: r.ok ? '' : await r.text().catch(() => '') }
+    } catch (e) {
+      // DNS / 连接被重置等网络层失败：返回 status 0，让外层走 workers.dev 兜底而不是整个脚本崩掉
+      return { ok: false, status: 0, body: e instanceof Error ? e.message : String(e) }
+    }
   }
 
   let base = DEMO_URL
@@ -105,7 +110,7 @@ if (sub === 'deploy') {
   console.log('② 重灌演示数据…')
   run(PY, ['scripts/seed_demo.py', '--base', base, '--token', token, '--allow-remote', ...proxyArgs])
   console.log('③ 批量补全封面与主创（只填空位）…')
-  run(PY, ['scripts/backfill.py', '--base', base, '--token', token, '--missing', 'cover_url', '--auto', ...proxyArgs])
+  run(PY, ['scripts/backfill.py', '--base', base, '--token', token, '--missing', 'cover_url', '--auto', '--allow-remote', ...proxyArgs])
   console.log('✅ 演示站重置完成')
 } else {
   console.error('用法：node scripts/demo.mjs <deploy|reset>')

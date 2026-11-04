@@ -10,6 +10,7 @@
 """
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
@@ -62,13 +63,18 @@ def api(path, method='GET', body=None, token=TOKEN, raw=False):
         },
     )
     try:
-        r = urllib.request.urlopen(req)
+        r = urllib.request.urlopen(req, timeout=30)
         data = r.read()
         if raw:
             return r, data
         return r.status, (json.loads(data) if data else None)
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b'null')
+        raw = e.read() or b'null'
+        try:
+            return e.code, json.loads(raw)
+        except ValueError:
+            # Cloudflare 盾 / 网关返回 HTML 错误页时按 None 处理，让上层按状态码判断而不是二次崩溃
+            return e.code, None
 
 
 # ---------------- 基准数据（不写死条数，任何数据集都能跑） ----------------
@@ -88,6 +94,10 @@ if stale:
     _, base = api('/api/items?page_size=1')
 
 TOTAL = base['total']
+_, BASE_STATS = api('/api/stats')
+if BASE_STATS is None:
+    print('无法读取 /api/stats，请确认已登录且服务正常')
+    sys.exit(1)
 _, fx = api('/api/fields/facets')
 CAT = dict(fx['categories'])
 _, SC = api('/api/items/status-counts')
@@ -261,7 +271,9 @@ print('== 统计 / 导出 ==')
 _, s = api('/api/stats')
 check('统计三榜齐全', all(k in s for k in ['by_author', 'by_director', 'by_actor']))
 check('KPI 总数含临时条目', s['kpi']['total'] == TOTAL + 1, s['kpi'])
-check('未评分统计正确(修复验证)', s['unrated'] >= TOTAL, s['unrated'])
+# 基准里 unrated 取启动时的值：基准库可能本来就有未评分条目，不能拿「未评分 >= 总数」这种只在
+# 全库无评分时才成立的写法（有评分的数据集会必失败，与「任意数据集均可跑」矛盾）。
+check('未评分统计正确', s['unrated'] == BASE_STATS['unrated'] + 1, (s['unrated'], BASE_STATS['unrated']))
 r, csv = api('/api/export.csv', raw=True)
 text = csv.decode('utf-8-sig')
 lines = [l for l in text.split('\r\n') if l.strip()]
@@ -275,21 +287,27 @@ lines2 = [l for l in csv2.decode('utf-8-sig').split('\r\n') if l.strip()]
 check('导出尊重筛选（movie）', len(lines2) - 1 == CAT.get('movie', 0) + 1, len(lines2) - 1)
 
 print('== 修改密码 ==')
-AUTH_PWD = open('.dev.vars', encoding='utf-8').read().split('AUTH_PASSWORD=')[1].splitlines()[0].strip()
-st, _ = api('/api/auth/change-password', 'POST', {'current': 'wrong-current', 'next': 'TempPass123'})
-check('错误当前密码被拒 400', st == 400, st)
-st, _ = api('/api/auth/change-password', 'POST', {'current': AUTH_PWD, 'next': 'abc'})
-check('过短新密码被拒 400', st == 400, st)
-st, _ = api('/api/auth/change-password', 'POST', {'current': AUTH_PWD, 'next': 'TempPass123'})
-check('修改密码成功', st == 200, st)
-st, d = api('/api/auth/login', 'POST', {'password': 'TempPass123'}, token=None)
-check('新密码可登录', st == 200 and d.get('ok'), (st, d))
-st, d = api('/api/auth/login', 'POST', {'password': AUTH_PWD}, token=None)
-check('应急密钥仍可登录(OR 语义)', st == 200 and d.get('ok'), (st, d))
-st, _ = api('/api/auth/change-password', 'POST', {'current': 'TempPass123', 'next': AUTH_PWD})
-check('改回原密码', st == 200, st)
-st, d = api('/api/auth/login', 'POST', {'password': AUTH_PWD}, token=None)
-check('原密码恢复可登录', st == 200 and d.get('ok'), (st, d))
+# 这段会把库里存的密码哈希整体换掉、并让所有现有会话失效（改密码会轮换 auth_version）。
+# 结束时写回的 AUTH_PWD 是应急密钥值——若库里原本是应用内另设的密码，跑完就被覆盖了。
+# 所以远程站点一律跳过；本地 dev 想跳过则设环境变量 QA_SKIP_PASSWORD=1。
+if not is_local(BASE) or os.environ.get('QA_SKIP_PASSWORD') == '1':
+    skip('修改密码', '远程站点（或 QA_SKIP_PASSWORD=1）不改密码，避免覆盖真实密码与踢掉在线会话')
+else:
+    AUTH_PWD = open('.dev.vars', encoding='utf-8').read().split('AUTH_PASSWORD=')[1].splitlines()[0].strip()
+    st, _ = api('/api/auth/change-password', 'POST', {'current': 'wrong-current', 'next': 'TempPass123'})
+    check('错误当前密码被拒 400', st == 400, st)
+    st, _ = api('/api/auth/change-password', 'POST', {'current': AUTH_PWD, 'next': 'abc'})
+    check('过短新密码被拒 400', st == 400, st)
+    st, _ = api('/api/auth/change-password', 'POST', {'current': AUTH_PWD, 'next': 'TempPass123'})
+    check('修改密码成功', st == 200, st)
+    st, d = api('/api/auth/login', 'POST', {'password': 'TempPass123'}, token=None)
+    check('新密码可登录', st == 200 and d.get('ok'), (st, d))
+    st, d = api('/api/auth/login', 'POST', {'password': AUTH_PWD}, token=None)
+    check('应急密钥仍可登录(OR 语义)', st == 200 and d.get('ok'), (st, d))
+    st, _ = api('/api/auth/change-password', 'POST', {'current': 'TempPass123', 'next': AUTH_PWD})
+    check('改回原密码', st == 200, st)
+    st, d = api('/api/auth/login', 'POST', {'password': AUTH_PWD}, token=None)
+    check('原密码恢复可登录', st == 200 and d.get('ok'), (st, d))
 
 print('== 自动补全 ==')
 _, qa2 = api('/api/items', 'POST', {'title': 'QA补全测试', 'category': 'movie', 'status': 'want'})
