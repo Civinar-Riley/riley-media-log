@@ -27,14 +27,18 @@ const STRIP_CHARS = [
 export function normalizeSearchTerm(s: string): string {
   let out = s
   for (const ch of STRIP_CHARS) out = out.split(ch).join('')
-  return out.toLowerCase()
+  // 只小写 A–Z：生成列用 SQLite 的 lower()，而它只处理 ASCII（'É'→'É'、'Ｂ'→'Ｂ'、西里尔不变）。
+  // 这里若用 toLowerCase() 会把 'É' 变 'é'、'Ｂ' 变 'ｂ'，与生成列不等，原样照打也搜不到。
+  return out.replace(/[A-Z]/g, (c) => c.toLowerCase())
 }
 
 /** 搜索词 → 匹配条件：按空格拆成多个关键字 AND 组合，每个关键字命中标题（归一化）或拼音即可 */
 function searchCond(q: string): Cond {
   const terms = [...new Set(q.split(/\s+/).map(normalizeSearchTerm).filter(Boolean))]
   if (!terms.length) {
-    // 整串都是标点/空白时退回原始子串匹配，避免「搜 · 变成搜全部」
+    // 整串都是标点/空白时退回原始子串匹配，避免「搜 · 变成搜全部」。
+    // 这里不能用 normalizeSearchTerm（它会把标点剥成空串 → 匹配全部）；
+    // 拼音列只含 a–z0–9，toLowerCase 不会有跨 Unicode 的大小写问题。
     return { sql: `(i.title LIKE ? ESCAPE '\\' OR i.pinyin LIKE ? ESCAPE '\\')`, params: [like(q), like(q.toLowerCase())] }
   }
   return {

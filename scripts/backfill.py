@@ -24,7 +24,7 @@ import re
 import sys
 import time
 
-from common import api, fetch_all_items, install_proxy, load_token
+from common import api, fetch_all_items, install_proxy, is_local, load_token
 
 BASE = 'http://localhost:5173'
 ALL_FIELDS = ['cover_url', 'year', 'regions', 'tags', 'directors', 'actors', 'authors', 'episode_count', 'external_rating']
@@ -105,6 +105,7 @@ def main():
     parser.add_argument('--overwrite', action='store_true', help='允许覆盖已有值（默认只填空位；配合报告 --undo 可整批撤回）')
     parser.add_argument('--delay', type=float, default=1.0, help='每条之间的间隔秒数（对外部源友好）')
     parser.add_argument('--undo', metavar='REPORT', help='按回填报告撤回一次批量操作')
+    parser.add_argument('--allow-remote', action='store_true', help='允许对非本地地址写入（会真实改数据！撤销模式同样需要）')
     parser.add_argument('--proxy', default=None, help='HTTP 代理（如 http://127.0.0.1:<你的代理端口>），访问 workers.dev 被墙时使用')
     args = parser.parse_args()
 
@@ -115,20 +116,37 @@ def main():
         print('找不到 API_TOKEN：请加 --token 或确认 .dev.vars 存在', file=sys.stderr)
         sys.exit(1)
 
-    # 撤回模式
+    # 先算出真正要打的地址（--undo 优先用报告里记录的 base，防止报告与地址错配打到别的站）
+    explicit_base = (args.base or '').rstrip('/')
+    target_base = explicit_base or BASE
     if args.undo:
-        report = json.load(open(args.undo, encoding='utf-8'))
+        try:
+            report = json.load(open(args.undo, encoding='utf-8'))
+        except (OSError, ValueError) as e:
+            print(f'报告读不出来：{e}', file=sys.stderr)
+            sys.exit(2)
         report_base = (report.get('base') or '').rstrip('/')
-        explicit_base = (args.base or '').rstrip('/')
         if report_base:
             if explicit_base and explicit_base != report_base:
                 print(f'报告生成于 {report_base}，与 --base {explicit_base} 不一致，拒绝撤回', file=sys.stderr)
                 sys.exit(2)
-            args.base = report_base
+            target_base = report_base
         else:
-            args.base = explicit_base or BASE
-        print(f'目标环境：{args.base}')
+            target_base = explicit_base or BASE
 
+    # 远程写入守卫：自动补全会真实改库（--overwrite 还会覆盖已有值），
+    # 打非本地地址必须显式 --allow-remote（同 import_json / seed_demo / qa_sweep）。
+    if not is_local(target_base) and not args.allow_remote:
+        print(
+            f'拒绝执行：目标 {target_base} 不是本地环境。回填会真实写入（--overwrite 会覆盖已有值），'
+            '确认请显式加 --allow-remote'
+        )
+        sys.exit(2)
+    print(f'目标环境：{target_base}' + ('' if is_local(target_base) else '（远程，真实写入！）'))
+
+    # 撤回模式
+    if args.undo:
+        args.base = target_base
         entries = [e for e in report.get('applied', []) if isinstance(e.get('log_id'), int)]
         skipped = len(report.get('applied', [])) - len(entries)
         suffix = f'（跳过 {skipped} 条无 log_id 的记录）' if skipped else ''
@@ -149,8 +167,7 @@ def main():
         print(f'撤回完成 {ok}/{len(entries)}')
         return
 
-    args.base = (args.base or BASE).rstrip('/')
-    print(f'目标环境：{args.base}')
+    args.base = target_base
 
     # 找出待处理条目（翻页取全；缺字段过滤在本地做）
     try:

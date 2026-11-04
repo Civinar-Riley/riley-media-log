@@ -55,7 +55,8 @@ def main():
         sys.exit(1)
 
     try:
-        data = json.load(open(args.input, encoding='utf-8'))
+        # utf-8-sig：容忍 Windows 记事本保存时带的 BOM，普通无 BOM 文件也不受影响
+        data = json.load(open(args.input, encoding='utf-8-sig'))
     except Exception as e:
         print(f'读不了 JSON 文件：{e}', file=sys.stderr)
         sys.exit(1)

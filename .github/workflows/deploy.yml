@@ -5,6 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 同一时间只跑一个部署：连续 push 时后面的排队（cancel-in-progress=false，
+# 避免「新代码的迁移」和「旧代码的部署」并行交叉，把库和线上代码搞成不一致的状态）
+concurrency:
+  group: deploy-to-cloudflare
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -19,6 +25,10 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      # 先构建（含 tsc 类型检查）：编译不过就不碰任何数据库，避免「迁移已应用、新代码却没部署上去」
+      - name: 类型检查 + 构建
+        run: npm run build
+
       # ---------- 正式站（log.civinar.eu.cc）----------
       - name: 应用迁移（正式站）
         run: npx wrangler d1 migrations apply riley-media-log --remote
@@ -27,8 +37,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: 类型检查 + 构建 + 部署（正式站）
-        run: npm run deploy
+      - name: 部署（正式站）
+        run: npx wrangler deploy
         env:
           CLOUDFLARE_ENV: prod
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -42,8 +52,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: 类型检查 + 构建 + 部署（演示站）
-        run: npm run deploy
+      - name: 部署（演示站）
+        run: npx wrangler deploy --env demo
         env:
           CLOUDFLARE_ENV: demo
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

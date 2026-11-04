@@ -49,11 +49,16 @@ def api(path, method='GET', body=None):
         },
     )
     try:
-        r = urllib.request.urlopen(req)
+        r = urllib.request.urlopen(req, timeout=30)
         data = r.read()
         return r.status, (json.loads(data) if data else None)
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b'null')
+        raw = e.read() or b'null'
+        try:
+            return e.code, json.loads(raw)
+        except ValueError:
+            # Cloudflare 盾 / 网关返回 HTML 错误页时按 None 处理，别让整个灌数据流程崩在这里
+            return e.code, None
 
 
 # title, category, year, regions, tags, directors, actors, authors, status, rating, channel, progress, finish, notes, review
