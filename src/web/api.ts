@@ -1,3 +1,4 @@
+import { encodeFilterList } from '../shared/filters'
 import type {
   Activity,
   AutofillApplyResult,
@@ -42,14 +43,14 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T
 }
 
-/** 筛选对象 → 查询串（数组逗号连接，空值跳过） */
+/** 筛选对象 → 查询串（空值跳过，含逗号的名称保留完整） */
 export function filtersToQuery(f: ItemFilters): string {
   const sp = new URLSearchParams()
   if (f.q) sp.set('q', f.q)
   const listKeys = ['category', 'status', 'regions', 'tags', 'authors', 'directors', 'actors', 'finish_status'] as const
   for (const k of listKeys) {
     const v = f[k]
-    if (v && v.length) sp.set(k, v.join(','))
+    if (v && v.length) sp.set(k, encodeFilterList(v))
   }
   if (f.tag_mode && f.tags?.length) sp.set('tag_mode', f.tag_mode)
   if (f.region_mode && f.regions?.length) sp.set('region_mode', f.region_mode)
@@ -86,6 +87,11 @@ export const api = {
 
   listItems: (f: ItemFilters, page: number, pageSize: number) =>
     req<PagedItems>(`/api/items?${filtersToQuery(f)}&page=${page}&page_size=${pageSize}`),
+  findDuplicate: (title: string, category: string, season: number | null) => {
+    const sp = new URLSearchParams({ title, category })
+    if (season !== null) sp.set('season', String(season))
+    return req<Item | null>(`/api/items/duplicate?${sp}`)
+  },
   getItem: (id: number) =>
     req<Item & { viewings: Viewing[]; lists: { id: number; name: string }[]; activity: Activity[] }>(
       `/api/items/${id}`
@@ -113,7 +119,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  autofillFields: (body: { item_id: number; source: AutofillSource; external_id: string }) =>
+  autofillFields: (body: { item_id: number; source: AutofillSource; external_id: string; season?: number }) =>
     req<AutofillFieldOptions>('/api/autofill/fields', { method: 'POST', body: JSON.stringify(body) }),
   autofillApply: (body: {
     item_id: number
@@ -121,6 +127,7 @@ export const api = {
     external_id: string
     fields: string[]
     overwrite?: boolean
+    season?: number
   }) => req<AutofillApplyResult>('/api/autofill/apply', { method: 'POST', body: JSON.stringify(body) }),
   autofillUndo: (log_id: number) =>
     req<{ restored: string[]; skipped: string[] }>('/api/autofill/undo', {

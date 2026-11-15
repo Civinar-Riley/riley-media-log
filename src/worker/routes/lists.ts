@@ -89,9 +89,9 @@ listsRoutes.post('/:id/items', async (c) => {
 
   const uniqueIds = [...new Set(data.item_ids)]
   const existing = await c.env.DB.prepare(
-    `SELECT id FROM items WHERE id IN (${uniqueIds.map(() => '?').join(',')})`
+    'SELECT id FROM items WHERE id IN (SELECT value FROM json_each(?))'
   )
-    .bind(...uniqueIds)
+    .bind(JSON.stringify(uniqueIds))
     .all<{ id: number }>()
   const existingIds = new Set(existing.results.map((r) => r.id))
   const missing = uniqueIds.filter((itemId) => !existingIds.has(itemId))

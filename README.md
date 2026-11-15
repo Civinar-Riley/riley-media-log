@@ -79,7 +79,7 @@
 | 🎨 四套主题 | 晨白 / 夜幕 / 纸页 / 青瓷，可跟随系统昼夜自动切换 |
 | 📱 手机适配 | 响应式布局 + PWA，手机上加到主屏幕随手记 |
 | 🔐 修改密码 | 设置页内直接修改登录密码；Cloudflare 应急密钥作为忘记密码时的找回通道 |
-| 📤 导出备份 | CSV（Excel 直接打开）与 JSON 完整备份，支持导出当前筛选结果或全部 |
+| 📤 导出备份 | CSV（Excel 直接打开）与 JSON 业务备份（条目、观看流水、清单、动态、补全快照及类别/别名设置），支持当前筛选或全部导出 |
 | 🔤 关键字搜索 | 标题支持全拼检索（如输入 `manchang` 找到《漫长的季节》）与多关键字（空格分隔）；标点 / 空格写法差异不影响命中（`ben10 终极` 能找到「BEN 10：终极异形」，`彼得格里尔` 能找到「彼得·格里尔…」），列表按拼音首字母排序 |
 
 ## 📦 安装
@@ -132,7 +132,7 @@
 
 | 场景 | 操作 |
 | :--- | :--- |
-| **导入自己的存量资料** | 照 [docs/import-template.json](./docs/import-template.json) 把资料整理成 JSON（除标题外都可以不填，缺的之后用「自动补全」补）→ `python scripts/import_json.py --input 你的资料.json`（导入线上站点加 `--base https://你的站点 --token xxx --allow-remote`）；默认按「标题+年份+类别」查重跳过已有条目 |
+| **导入自己的存量资料** | 照 [docs/import-template.json](./docs/import-template.json) 把资料整理成 JSON（除标题外都可以不填，缺的之后用「自动补全」补）→ `python scripts/import_json.py --input 你的资料.json`（导入线上站点加 `--base https://你的站点 --token xxx --allow-remote`）；默认按「标题+年份+类别+季号」查重跳过已有条目 |
 | **日常记一笔** | 右上角「记一笔」→ 填个标题就能保存，其余字段随时补 |
 | **补记多年前的老片** | 记一笔 → 状态选「看过」→ 填年份 → 观后感写两句 → 顺手打个星 |
 | **记二刷** | 打开条目详情 → 观看流水里选日期、写一句感受 → 「记一次观看」 |
@@ -144,9 +144,9 @@
 | **备份到 Excel** | 片单页右上角下载图标导出当前筛选，设置页导出全部 CSV/JSON |
 | **脚本批量读写** | 用 `API_TOKEN` 走 Bearer 调 `/api/*`，见下方开放接口 |
 | **手机上用** | 浏览器打开站点 → 添加到主屏幕（PWA），底部标签栏切换页面 |
-| **修改登录密码** | 设置页 → 登录密码 → 输入当前密码和新密码即可；改后立即生效，已登录设备不受影响 |
+| **修改登录密码** | 设置页 → 登录密码 → 输入当前密码和新密码即可；改后立即生效，其他已登录设备需要重新登录 |
 | **给条目自动补全信息** | 详情页 → 自动补全 → 选数据源（影视走 TMDB，书漫走 Bangumi）→ 搜索选择候选 → 勾选要填的字段（只填空位；标题默认在覆盖组，勾上即换成官方全名）→ 应用；分季条目会按「季号」取单季集数（不会把 TMDB 的整剧集数填进来），搜索时自动忽略标题里的季号和（美版）这类说明；填错了点「撤回」 |
-| **批量回填存量** | `python scripts/backfill.py --category movie --limit 20`：逐条给候选让你确认；`--auto` 则只应用「标题+年份完全一致」的；`--overwrite` 覆盖已有值（默认只填空位）；`--undo data/报告.json` 一键撤回整批 |
+| **批量回填存量** | `python scripts/backfill.py --category movie --limit 20`：逐条给候选让你确认；`--auto` 则只应用「标题+年份完全一致」的；`--overwrite` 覆盖已有值（默认只填空位）；`--undo data/报告.json` 一键撤回整批；远程回填或撤回均须加 `--allow-remote` |
 | **审计批量改动** | `python scripts/item_audit.py`：`snapshot` 改库前存快照 → `diff` 改库后对比变化 → `stats` 看各字段空值统计 → `logs --item-id N` 看某条目的补全流水；全部只读 |
 
 ## 🔌 开放接口
@@ -158,6 +158,7 @@
 | `POST /api/auth/login` · `POST /api/auth/logout` · `GET /api/auth/status` | 登录 / 登出 / 会话状态（免令牌） |
 | `POST /api/auth/change-password` | 修改登录密码（需登录，验证当前密码） |
 | `GET /api/items` | 条目列表，支持全部筛选参数（`q`、`category`、`status`、`tags`、`tag_mode=any/all`、`authors`、`actors`、`year_min` 等）与 `sort` / `order` / `page` 分页 |
+| `GET /api/items/duplicate` | 保存前按标题、类别、季号精确查重，不受列表分页影响 |
 | `POST /api/items` | 新建条目（JSON） |
 | `GET /api/items/:id` | 条目详情（含观看流水、所在清单、动态） |
 | `PUT /api/items/:id` · `DELETE /api/items/:id` | 局部更新 / 删除条目 |

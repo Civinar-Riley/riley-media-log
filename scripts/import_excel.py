@@ -138,7 +138,7 @@ def main():
     rows_out = []
     stats = {}
     dupes = []
-    seen_keys = set()
+    seen_counts = {}
 
     for sheet_name, default_cat in SHEET_CATEGORY.items():
         if sheet_name not in wb.sheetnames:
@@ -180,10 +180,11 @@ def main():
             review = str(cell(raw, cols.get("review")) or "").strip()
 
             key = (title, year, category)
-            if key in seen_keys:
+            occurrence = seen_counts.get(key, 0) + 1
+            if occurrence > 1:
                 dupes.append(f"{sheet_name}:{title}({year})")
                 notes = ("[疑似重复] " + notes).strip()
-            seen_keys.add(key)
+            seen_counts[key] = occurrence
 
             season = None
             m = SEASON_RE.search(title)
@@ -200,19 +201,21 @@ def main():
                 f"{sql_str(now)}, {sql_str(now)}"
             )
             where_year = str(year) if year is not None else "-1"
-            # 幂等：同标题+年份+类别已存在就跳过，重复执行不会整库翻倍
+            # 按文件内出现次数补齐；保留疑似重复的资料，重复执行同一文件也不会翻倍
             rows_out.append(
                 f"INSERT INTO items (title, pinyin, pinyin_initial, category, year, season, "
                 f"regions, tags, authors, status, progress, episode_count, rating, cover_url, "
                 f"channel, finish_status, notes, review, tmdb_id, created_at, updated_at) "
-                f"SELECT {values_sql} WHERE NOT EXISTS ("
-                f"SELECT 1 FROM items WHERE title = {sql_str(title)} "
-                f"AND category = {sql_str(category)} AND COALESCE(year, -1) = {where_year});"
+                f"SELECT {values_sql} WHERE ("
+                f"SELECT COUNT(*) FROM items WHERE title = {sql_str(title)} "
+                f"AND category = {sql_str(category)} AND COALESCE(year, -1) = {where_year}) < {occurrence};"
             )
             count += 1
         stats[sheet_name] = count
 
-    OUT_SQL.parent.mkdir(exist_ok=True)
+    wb.close()
+    OUT_SQL.parent.mkdir(parents=True, exist_ok=True)
+    OUT_REPORT.parent.mkdir(parents=True, exist_ok=True)
     # 注意：不能用 BEGIN TRANSACTION 包裹——远程 D1（Durable Objects 存储）会拒绝该语句
     OUT_SQL.write_text("\n".join(rows_out) + "\n", encoding="utf-8")
 

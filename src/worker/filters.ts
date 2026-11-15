@@ -27,7 +27,8 @@ const STRIP_CHARS = [
 export function normalizeSearchTerm(s: string): string {
   let out = s
   for (const ch of STRIP_CHARS) out = out.split(ch).join('')
-  return out.toLowerCase()
+  // SQLite 的 lower() 只折叠 ASCII，查询侧保持同一规则，避免 LÉON 原样搜索也失配。
+  return out.replace(/[A-Z]/g, (ch) => ch.toLowerCase())
 }
 
 /** 搜索词 → 匹配条件：按空格拆成多个关键字 AND 组合，每个关键字命中标题（归一化）或拼音即可 */
@@ -38,26 +39,27 @@ function searchCond(q: string): Cond {
     return { sql: `(i.title LIKE ? ESCAPE '\\' OR i.pinyin LIKE ? ESCAPE '\\')`, params: [like(q), like(q.toLowerCase())] }
   }
   return {
-    sql: terms
-      .map(() => `(i.search_norm LIKE ? ESCAPE '\\' OR i.pinyin LIKE ? ESCAPE '\\')`)
-      .join(' AND '),
-    params: terms.flatMap((t) => [like(t), like(t)]),
+    sql: `NOT EXISTS (
+      SELECT 1 FROM json_each(?) term
+      WHERE NOT (i.search_norm LIKE term.value ESCAPE '\\' OR i.pinyin LIKE term.value ESCAPE '\\')
+    )`,
+    params: [JSON.stringify(terms.map(like))],
   }
 }
 
 /** JSON 数组字段（tags/regions/creators）的「任一/全部」匹配条件 */
 function jsonFieldCond(field: string, values: string[], mode: 'any' | 'all') {
   const unique = [...new Set(values)]
-  const ph = unique.map(() => '?').join(',')
+  const params = [JSON.stringify(unique)]
   if (mode === 'any') {
     return {
-      sql: `EXISTS (SELECT 1 FROM json_each(i.${field}) je WHERE je.value IN (${ph}))`,
-      params: unique,
+      sql: `EXISTS (SELECT 1 FROM json_each(i.${field}) je WHERE je.value IN (SELECT value FROM json_each(?)))`,
+      params,
     }
   }
   return {
-    sql: `(SELECT COUNT(DISTINCT je.value) FROM json_each(i.${field}) je WHERE je.value IN (${ph})) = ?`,
-    params: [...unique, unique.length],
+    sql: `(SELECT COUNT(DISTINCT je.value) FROM json_each(i.${field}) je WHERE je.value IN (SELECT value FROM json_each(?))) = ?`,
+    params: [...params, unique.length],
   }
 }
 

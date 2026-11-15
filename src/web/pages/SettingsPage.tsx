@@ -351,8 +351,8 @@ function AliasManager() {
         )}
         <button
           className="btn h-8 sm:ml-auto"
-          disabled={!entries.length || normalize.isPending}
-          title="把已有条目里的人名按别名表改写为主名"
+          disabled={dirty || save.isPending || !entries.length || normalize.isPending}
+          title={dirty ? '请先保存别名，再归一历史数据' : '把已有条目里的人名按别名表改写为主名'}
           onClick={() => normalize.mutate()}
         >
           {normalize.isPending ? '归一中…' : '一键归一历史数据'}
@@ -405,7 +405,7 @@ function PasswordChanger() {
     <section className="card p-5">
       <h2 className="serif mb-1 font-medium text-ink">登录密码</h2>
       <p className="mb-4 text-xs text-faint">
-        修改后立即生效，已登录的设备不受影响。忘记密码时，Cloudflare 后台设置的应急密钥（AUTH_PASSWORD）仍可登录。
+        修改后立即生效，其他已登录设备需要重新登录。忘记密码时，Cloudflare 后台设置的应急密钥（AUTH_PASSWORD）仍可登录。
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
@@ -578,7 +578,7 @@ export default function SettingsPage() {
       {/* 导出 */}
       <section className="card p-5">
         <h2 className="serif mb-1 font-medium text-ink">导出备份</h2>
-        <p className="mb-4 text-xs text-faint">CSV 用 Excel 直接打开；JSON 是完整备份（含所有字段）。片单页的导出按钮只导当前筛选结果。</p>
+        <p className="mb-4 text-xs text-faint">CSV 用 Excel 直接打开；JSON 包含条目、观看流水、清单、动态、补全快照及类别/别名设置。片单页的导出按钮只导当前筛选结果。</p>
         <div className="flex gap-2">
           <a className="btn" href="/api/export.csv">
             <Download className="h-4 w-4" />

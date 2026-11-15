@@ -3,7 +3,8 @@ import { Sparkles, Undo2 } from 'lucide-react'
 import { api } from '../api'
 import { AUTOFILL_FIELD_LABELS } from '../../shared/types'
 import type { AutofillCandidate, AutofillFieldOption, AutofillSource, Item } from '../../shared/types'
-import { Modal } from './ui'
+import { seasonFromTitle } from '../../shared/season'
+import { CoverImage, Modal } from './ui'
 
 type Step = 'search' | 'fields' | 'done' | 'undone'
 
@@ -40,11 +41,16 @@ export function AutofillDialog({
   const [error, setError] = useState('')
   /** 每次搜索/选候选/应用/撤回递增；晚到的旧响应直接丢弃 */
   const requestId = useRef(0)
+  const sessionItemId = useRef<number | null>(null)
 
-  // 每次打开都按当前条目重新开始：标题可能刚改过（详情页刷新后 prop 会更新），
-  // 不能沿用组件首次挂载时的旧标题/旧候选
+  // 只在打开新会话或切换条目时重置；补全标题后的详情刷新不能清掉本次撤回入口。
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      sessionItemId.current = null
+      return
+    }
+    if (sessionItemId.current === item.id) return
+    sessionItemId.current = item.id
     requestId.current++
     setStep('search')
     setSource(defaultSourceFor(item.category))
@@ -60,7 +66,7 @@ export function AutofillDialog({
     setLogId(null)
     setBusy(false)
     setError('')
-  }, [open, item.title, item.category])
+  }, [open, item.id, item.title, item.category])
 
   function handleClose() {
     requestId.current++
@@ -97,7 +103,12 @@ export function AutofillDialog({
     setBusy(true)
     setError('')
     try {
-      const d = await api.autofillFields({ item_id: item.id, source: src, external_id: c.externalId })
+      const d = await api.autofillFields({
+        item_id: item.id,
+        source: src,
+        external_id: c.externalId,
+        season: c.seasonNumber ?? undefined,
+      })
       if (id !== requestId.current) return
       setOptions({ available: d.available, filled: d.filled, displayTitle: d.displayTitle })
       const init: Record<string, boolean> = {}
@@ -127,6 +138,7 @@ export function AutofillDialog({
         item_id: item.id,
         source: src,
         external_id: candidate.externalId,
+        season: candidate.seasonNumber ?? undefined,
         fields,
         overwrite,
       })
@@ -161,6 +173,10 @@ export function AutofillDialog({
     }
   }
 
+  const effectiveSeason = source === 'tmdb' && item.category !== 'movie'
+    ? seasonFromTitle(item.title) ?? item.season ?? picked?.seasonNumber
+    : null
+
   return (
     <Modal open={open} title="自动补全" onClose={handleClose} wide>
       {/* 数据源切换（切换后回到搜索步） */}
@@ -191,9 +207,9 @@ export function AutofillDialog({
 
       {step === 'search' && (
         <div>
-          {source === 'tmdb' && item.category !== 'movie' && item.season ? (
+          {effectiveSeason ? (
             <p className="mb-2 text-xs text-faint">
-              该条目是第 {item.season} 季：搜索会自动忽略标题里的季号和（美版）这类说明，集数 / 年份按该季单独获取。
+              该条目是第 {effectiveSeason} 季：搜索会自动忽略标题里的季号和（美版）这类说明，集数 / 年份按该季单独获取。
             </p>
           ) : null}
           <div className="mb-3 flex gap-2">
@@ -217,13 +233,11 @@ export function AutofillDialog({
                     className="flex w-full items-center gap-3 rounded-md border border-line px-2.5 py-2 text-left transition hover:border-brand/60"
                     onClick={() => pickCandidate(c)}
                   >
-                    {c.coverThumb ? (
-                      <img src={c.coverThumb} alt="" className="h-16 w-11 shrink-0 rounded object-cover" />
-                    ) : (
-                      <span className="serif flex h-16 w-11 shrink-0 items-center justify-center rounded bg-muted text-xl text-faint">
-                        {c.title.charAt(0)}
-                      </span>
-                    )}
+                    <CoverImage
+                      title={c.title}
+                      coverUrl={c.coverThumb ?? undefined}
+                      className="h-16 w-11 shrink-0 rounded object-cover"
+                    />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-ink">
                         {c.title || '(无中文标题)'}
@@ -256,6 +270,11 @@ export function AutofillDialog({
             匹配到：<span className="font-medium text-ink">{options.displayTitle || picked.title}</span>
             {picked.year ? <span className="text-faint">（{picked.year}）</span> : null}
           </p>
+          {effectiveSeason && item.season !== effectiveSeason && (
+            <p className="mb-3 text-xs text-faint">
+              应用该季信息时会同步记录季号 {effectiveSeason}，撤回时一并恢复。
+            </p>
+          )}
           <div className="mb-3 space-y-1.5">
             {options.available.map((f) => (
               <label

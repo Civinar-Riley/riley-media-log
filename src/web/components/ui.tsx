@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Star, ImageOff } from 'lucide-react'
 import { STATUS_LABELS, FINISH_LABELS } from '../../shared/types'
 import type { Status, FinishStatus } from '../../shared/types'
 import { useCategories } from '../cat'
 
-/** 返回按钮：从站内点进来的原路返回；直接输入/刷新进来的落到 fallback */
+/** 返回按钮：有站内前序页面时原路返回，否则落到 fallback。 */
 export function BackLink({
   fallback = '/',
   label = '返回',
@@ -17,8 +17,7 @@ export function BackLink({
   confirm?: () => boolean
 }) {
   const navigate = useNavigate()
-  const location = useLocation()
-  const fromSite = location.key !== 'default'
+  const fromSite = window.history.state?.idx > 0
   return (
     <button
       className="inline-flex cursor-pointer items-center gap-1 text-sm text-faint transition hover:text-brand"

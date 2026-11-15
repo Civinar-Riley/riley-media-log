@@ -3,7 +3,7 @@ import { itemCreateSchema, itemUpdateSchema, viewingCreateSchema, readBody } fro
 import { parseFilters, buildListQuery, buildWhere } from '../filters'
 import { mapItem, nowISO, logActivity, parseArr } from '../db'
 import { toPinyinText, toPinyinInitial } from '../pinyin'
-import { normalizeItemPeople } from './settings'
+import { normalizeItemPeople, readCategories } from './settings'
 import { STATUS_LABELS } from '../../shared/types'
 import type { Status } from '../../shared/types'
 
@@ -73,10 +73,28 @@ itemsRoutes.get('/random', async (c) => {
   return c.json(mapItem(row))
 })
 
+/** 保存前精确查重，不受关键字结果分页影响。 */
+itemsRoutes.get('/duplicate', async (c) => {
+  const title = c.req.query('title')?.trim()
+  const category = c.req.query('category')?.trim()
+  const rawSeason = c.req.query('season')
+  const season = rawSeason ? Number(rawSeason) : null
+  if (!title || !category || (season !== null && (!Number.isInteger(season) || season < 1 || season > 200))) {
+    return c.json({ error: '标题、类别或季号不合法' }, 400)
+  }
+  const row = await c.env.DB.prepare(
+    'SELECT * FROM items WHERE title = ? AND category = ? AND season IS ? ORDER BY id LIMIT 1'
+  ).bind(title, category, season).first()
+  return c.json(row ? mapItem(row) : null)
+})
+
 /** 新建条目 */
 itemsRoutes.post('/', async (c) => {
   const data = await readBody(c, itemCreateSchema)
   if (data instanceof Response) return data
+  if (!(await readCategories(c.env.DB)).some((cat) => cat.id === data.category)) {
+    return c.json({ error: '类别不存在，请先在设置中添加类别' }, 400)
+  }
   await normalizeItemPeople(c.env.DB, data)
   const now = nowISO()
   const row = await c.env.DB.prepare(
@@ -169,6 +187,9 @@ itemsRoutes.put('/:id', async (c) => {
 
   const data = await readBody(c, itemUpdateSchema)
   if (data instanceof Response) return data
+  if (data.category !== undefined && data.category !== old.category && !(await readCategories(c.env.DB)).some((cat) => cat.id === data.category)) {
+    return c.json({ error: '类别不存在，请先在设置中添加类别' }, 400)
+  }
   await normalizeItemPeople(c.env.DB, data)
   const keys = Object.keys(data) as (keyof typeof data)[]
   if (!keys.length) return c.json(mapItem(old))

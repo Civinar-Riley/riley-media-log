@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import {
@@ -13,7 +13,7 @@ import {
 } from '../../shared/types'
 import type { FinishStatus, Item, Status } from '../../shared/types'
 import { seasonFromTitle } from '../../shared/season'
-import { Loading, PageHeader, RatingStars } from '../components/ui'
+import { CoverImage, Loading, PageHeader, RatingStars } from '../components/ui'
 import { BackLink } from '../components/ui'
 import { TagInput } from '../components/TagInput'
 import { useCategories } from '../cat'
@@ -76,11 +76,8 @@ function numOrNull(v: string): number | null {
 class SaveCancelled extends Error {}
 
 /** 保存前的强查重：标题 + 类别 + 季号全一致才算重复（同名不同季是合法的分季记录） */
-async function findDup(title: string, category: string, season: number | null): Promise<Item | undefined> {
-  const d = await api.listItems({ q: title }, 1, 30)
-  return d.items.find(
-    (it) => it.title === title && it.category === category && (it.season ?? null) === (season ?? null)
-  )
+async function findDup(title: string, category: string, season: number | null): Promise<Item | null> {
+  return api.findDuplicate(title, category, season)
 }
 
 /** 进度单位：综艺按期、小说按章、漫画按话，其余按集 */
@@ -156,10 +153,12 @@ function Segmented({
 
 export default function ItemFormPage() {
   const { id } = useParams()
-  const itemId = id ? Number(id) : undefined
+  return <ItemForm key={id ?? 'new'} itemId={id ? Number(id) : undefined} />
+}
+
+function ItemForm({ itemId }: { itemId?: number }) {
   const editing = itemId !== undefined
   const navigate = useNavigate()
-  const location = useLocation()
   const qc = useQueryClient()
 
   const existing = useQuery({
@@ -168,14 +167,20 @@ export default function ItemFormPage() {
     enabled: editing,
   })
   const facets = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
-  const { visible: visibleCats, finishOf, authorOf, directorOf, actorOf } = useCategories()
+  const {
+    all: allCats, visible: visibleCats, ready: catsReady, error: catsError, reload: reloadCats,
+    finishOf, authorOf, directorOf, actorOf,
+  } = useCategories()
 
   const [form, setForm] = useState<FormState>(EMPTY)
   const [error, setError] = useState('')
   const initialRef = useRef<FormState>(EMPTY)
-  const catOptions = visibleCats.some((c) => c.id === form.category)
-    ? visibleCats
-    : [...visibleCats, { id: form.category, label: form.category }]
+  const loadedRef = useRef(false)
+  const savedRef = useRef(false)
+  const selectableCats = visibleCats.length ? visibleCats : allCats
+  const catOptions = selectableCats.some((c) => c.id === form.category)
+    ? selectableCats
+    : [...selectableCats, allCats.find((c) => c.id === form.category) ?? { id: form.category, label: form.category }]
   const catLabels = Object.fromEntries(catOptions.map((c) => [c.id, c.label]))
   const regionSuggestions = useMemo(
     () => [...new Set([...REGION_PRESETS, ...(facets.data?.regions.map(([v]) => v) ?? [])])],
@@ -230,6 +235,7 @@ export default function ItemFormPage() {
   }
 
   function onTitleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (!suggestOpen || !suggestions.length) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -245,26 +251,39 @@ export default function ItemFormPage() {
     }
   }
 
+  // 每次进入条目只初始化一次，后台重新拉取不能覆盖正在编辑的草稿。
   useEffect(() => {
+    if (loadedRef.current || (editing && existing.isFetching)) return
     if (editing && existing.data) {
       const next = toForm(existing.data)
       initialRef.current = next
       setForm(next)
+      loadedRef.current = true
+    } else if (!editing && catsReady) {
+      const next = { ...EMPTY, category: selectableCats[0]?.id ?? EMPTY.category }
+      initialRef.current = next
+      setForm(next)
+      loadedRef.current = true
     }
-  }, [editing, existing.data])
+  }, [editing, existing.data, existing.isFetching, catsReady, selectableCats])
 
-  // 编辑页和 /new 复用同一个组件实例：从编辑切到新建时要清空，否则会带着上一条的数据
+  const dirty = JSON.stringify(form) !== JSON.stringify(initialRef.current)
+  const blocker = useBlocker(() => dirty && !savedRef.current)
   useEffect(() => {
-    if (!editing) {
-      initialRef.current = EMPTY
-      setForm(EMPTY)
-      setError('')
+    if (blocker.state !== 'blocked') return
+    if (window.confirm('有未保存的修改，确定离开吗？')) blocker.proceed()
+    else blocker.reset()
+  }, [blocker])
+  useEffect(() => {
+    if (!dirty) return
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (savedRef.current) return
+      event.preventDefault()
+      event.returnValue = ''
     }
-  }, [editing])
-
-  const confirmLeave = () =>
-    JSON.stringify(form) === JSON.stringify(initialRef.current) ||
-    window.confirm('有未保存的修改，确定离开吗？')
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [dirty])
 
   const save = useMutation({
     mutationFn: async () => {
@@ -278,11 +297,11 @@ export default function ItemFormPage() {
         rating: form.rating,
         regions: form.regions,
         tags: form.tags,
-        authors: authorOf(form.category) ? form.authors : [],
-        directors: directorOf(form.category) ? form.directors : [],
-        actors: actorOf(form.category) ? form.actors : [],
+        authors: form.authors,
+        directors: form.directors,
+        actors: form.actors,
         channel: form.channel.trim(),
-        finish_status: finishOf(form.category) ? form.finish_status : null,
+        finish_status: form.finish_status,
         cover_url: form.cover_url.trim(),
         progress: form.progressNum
           ? `看到第 ${form.progressNum} ${progressUnit(form.category)}`
@@ -312,11 +331,12 @@ export default function ItemFormPage() {
       return editing ? api.updateItem(itemId!, payload) : api.createItem(payload)
     },
     onSuccess: (saved) => {
+      savedRef.current = true
       invalidateLibrary(qc)
       if (editing) {
         // 历史里本来就有详情页（列表→详情→编辑），直接退回去即可：
         // 编辑页不留历史，之后点「返回」自然回到列表；直接打开编辑页的情况退无可退，replace 落到详情
-        if (location.key === 'default') navigate(`/items/${itemId}`, { replace: true })
+        if (!(window.history.state?.idx > 0)) navigate(`/items/${itemId}`, { replace: true })
         else navigate(-1)
       } else {
         // 新建后落在详情，replace 让「返回」回到来处而不是空白表单
@@ -332,7 +352,14 @@ export default function ItemFormPage() {
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
-  if (editing && existing.isLoading) return <Loading />
+  if (!catsReady && !catsError) return <Loading />
+  if (catsError) return (
+    <div className="py-16 text-center text-sm text-faint">
+      <p>类别加载失败，请重试后编辑。</p>
+      <button className="btn mt-3" onClick={reloadCats}>重试</button>
+    </div>
+  )
+  if (editing && (existing.isLoading || (!loadedRef.current && existing.isFetching))) return <Loading />
   if (editing && existing.isError)
     return <p className="py-16 text-center text-sm text-faint">条目加载失败，请刷新重试。</p>
 
@@ -342,7 +369,6 @@ export default function ItemFormPage() {
         <BackLink
           fallback={editing ? `/items/${itemId}` : '/'}
           label={editing ? '返回条目' : '返回片单'}
-          confirm={confirmLeave}
         />
       </div>
       <PageHeader
@@ -631,16 +657,10 @@ export default function ItemFormPage() {
               placeholder="https://…（豆瓣、TMDB 等海报图链接）"
             />
             {form.cover_url && (
-              <img
-                src={form.cover_url}
-                alt="封面预览"
-                className="h-20 w-14 rounded border border-line object-cover"
-                onLoad={(e) => {
-                  ;(e.target as HTMLImageElement).style.opacity = '1'
-                }}
-                onError={(e) => {
-                  ;(e.target as HTMLImageElement).style.opacity = '0.2'
-                }}
+              <CoverImage
+                title="封面预览"
+                coverUrl={form.cover_url}
+                className="h-20 w-14 rounded border border-line"
               />
             )}
           </div>
@@ -674,8 +694,7 @@ export default function ItemFormPage() {
           <button
             className="btn"
             onClick={() => {
-              if (!confirmLeave()) return
-              if (location.key === 'default') {
+              if (!(window.history.state?.idx > 0)) {
                 navigate(editing ? `/items/${itemId}` : '/', { replace: true })
               } else {
                 navigate(-1)

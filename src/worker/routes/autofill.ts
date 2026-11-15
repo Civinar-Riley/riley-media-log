@@ -83,7 +83,8 @@ autofillRoutes.post('/apply', async (c) => {
     data.source,
     data.external_id,
     data.fields,
-    data.overwrite === true
+    data.overwrite === true,
+    data.season
   )
   if ('error' in result && result.error) {
     const status = result.error.includes('不存在') ? 404 : 400
@@ -114,7 +115,7 @@ autofillRoutes.post('/fields', async (c) => {
       503
     )
   }
-  const result = await autofillFieldOptions(c.env, data.item_id, data.source, data.external_id)
+  const result = await autofillFieldOptions(c.env, data.item_id, data.source, data.external_id, data.season)
   if ('error' in result) {
     const status = result.error.includes('不存在') ? 404 : 400
     return c.json({ ...result, error: result.error }, status)

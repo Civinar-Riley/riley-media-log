@@ -65,8 +65,7 @@ function applyAliases(names: string[] | undefined, aliases: Record<string, strin
   for (const n of names) {
     let canonical = n
     const visited = new Set<string>([n])
-    let hops = 0
-    while (aliases[canonical] && hops++ < 20) {
+    while (Object.hasOwn(aliases, canonical)) {
       const next = aliases[canonical]
       if (next === canonical || visited.has(next)) break
       visited.add(next)
@@ -139,11 +138,11 @@ settingsRoutes.put('/aliases', async (c) => {
   for (const [alias, canonical] of Object.entries(aliases)) {
     if (alias === canonical) return c.json({ error: `别名「${alias}」不能指向自己` }, 400)
     let cur: string = canonical
-    for (let depth = 0; depth < 10; depth++) {
-      const next = aliases[cur]
-      if (next === undefined) break
-      if (next === alias) return c.json({ error: `别名成环：${alias} ↔ ${canonical}` }, 400)
-      cur = next
+    const visited = new Set<string>([alias])
+    while (Object.hasOwn(aliases, cur)) {
+      if (visited.has(cur)) return c.json({ error: `别名成环：${alias} ↔ ${canonical}` }, 400)
+      visited.add(cur)
+      cur = aliases[cur]
     }
   }
 

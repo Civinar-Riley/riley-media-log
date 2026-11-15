@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { parseFilters, buildWhere } from '../filters'
 import { mapItem, nowISO, todayLocal } from '../db'
-import { readCategories } from './settings'
+import { readAliases, readCategories } from './settings'
 import { STATUS_LABELS, FINISH_LABELS } from '../../shared/types'
 import type { Item } from '../../shared/types'
 
@@ -53,7 +53,7 @@ interface ExportCtx {
 
 async function loadAll(
   c: ExportCtx
-): Promise<{ items: Item[]; total: number; truncated: boolean }> {
+): Promise<{ items: Item[]; total: number; truncated: boolean; filtered: boolean }> {
   const where = buildWhere(parseFilters(new URLSearchParams(c.req.query())))
   const wherePart = where.sql ? `WHERE ${where.sql}` : ''
   const [countRow, rows] = await Promise.all([
@@ -69,7 +69,7 @@ async function loadAll(
   ])
   const items = rows.results.map(mapItem)
   const total = countRow?.n ?? items.length
-  return { items, total, truncated: total > items.length }
+  return { items, total, truncated: total > items.length, filtered: Boolean(where.sql) }
 }
 
 exportRoutes.get('/export.csv', async (c) => {
@@ -93,6 +93,25 @@ exportRoutes.get('/export.csv', async (c) => {
 
 exportRoutes.get('/export.json', async (c) => {
   const data = await loadAll(c)
+  const itemIds = JSON.stringify(data.items.map((item) => item.id))
+  const itemScope = 'item_id IN (SELECT value FROM json_each(?))'
+  const fullExport = !data.filtered && !data.truncated
+  const [viewings, lists, listItems, activity, autofill, categories, aliases] = await Promise.all([
+    c.env.DB.prepare(`SELECT * FROM viewings WHERE ${itemScope} ORDER BY id`).bind(itemIds).all(),
+    fullExport
+      ? c.env.DB.prepare('SELECT * FROM lists ORDER BY id').all()
+      : c.env.DB.prepare(
+          `SELECT * FROM lists WHERE id IN (SELECT list_id FROM list_items WHERE ${itemScope}) ORDER BY id`
+        ).bind(itemIds).all(),
+    c.env.DB.prepare(`SELECT * FROM list_items WHERE ${itemScope} ORDER BY list_id, sort_order, item_id`)
+      .bind(itemIds).all(),
+    c.env.DB.prepare(
+      `SELECT * FROM activity_log WHERE ${itemScope}${fullExport ? ' OR item_id IS NULL' : ''} ORDER BY id`
+    ).bind(itemIds).all(),
+    c.env.DB.prepare(`SELECT * FROM autofill_log WHERE ${itemScope} ORDER BY id`).bind(itemIds).all(),
+    readCategories(c.env.DB),
+    readAliases(c.env.DB),
+  ])
   const date = todayLocal().replace(/-/g, '')
   return new Response(
     JSON.stringify(
@@ -102,6 +121,12 @@ exportRoutes.get('/export.json', async (c) => {
         total: data.total,
         truncated: data.truncated,
         items: data.items,
+        viewings: viewings.results,
+        lists: lists.results,
+        list_items: listItems.results,
+        activity_log: activity.results,
+        autofill_log: autofill.results,
+        settings: { categories, aliases },
       },
       null,
       2

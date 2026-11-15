@@ -395,11 +395,17 @@ def main():
         })
         if st == 201:
             view_count += 1
+        else:
+            failed += 1
+            print(f'  观看流水失败：{title}（HTTP {st}）')
 
     st, after = api('/api/items?page_size=1')
+    if st != 200:
+        print(f'获取灌入后总数失败（HTTP {st}）', file=sys.stderr)
+        sys.exit(1)
     print(f'演示数据灌入完成：新增条目 {len(created)} 条、观看流水 {view_count} 条（原 {before} → 现 {after["total"]}）')
     if failed:
-        print(f'有 {failed} 条创建失败', file=sys.stderr)
+        print(f'有 {failed} 次写入失败', file=sys.stderr)
         sys.exit(1)
 
 
