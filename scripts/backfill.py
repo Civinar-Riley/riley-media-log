@@ -13,18 +13,19 @@
 - 每次应用在服务端都有快照（autofill_log），网页条目详情里可单独撤回；
   批量撤回用 --undo + 上次生成的报告文件
 - 默认只填空字段，手填过的内容不会被覆盖；--overwrite 允许覆盖（配合报告可整批撤回）
-- 自动模式只应用「标题完全一致」或「年份唯一命中」的候选；标题搜不到时会自动尝试
+- 自动模式只应用「标题一致，且已有年份时年份也一致」的唯一候选；标题搜不到时会自动尝试
   变体（去季数序号、去空格、括号内别名、去英文副标题、零零七→007），最后不带年份兜底
-- TMDB 在国内直连不通：打线上站点时本地需挂代理；打本地 dev 时 Worker 出网不受影响
+- 对非本地站点写入或撤回都需 --allow-remote；国内访问可用 --proxy 指定代理
 """
 import argparse
 import json
 import os
 import re
 import sys
+import tempfile
 import time
 
-from common import api, fetch_all_items, install_proxy, load_token
+from common import api, fetch_all_items, install_proxy, is_local, load_token
 
 BASE = 'http://localhost:5173'
 ALL_FIELDS = ['cover_url', 'year', 'regions', 'tags', 'directors', 'actors', 'authors', 'episode_count', 'external_rating']
@@ -93,6 +94,20 @@ def api_safe(*args, **kwargs):
         return 0, {'error': str(e)}
 
 
+def check_target(base, allow_remote):
+    print(f'目标环境：{base}')
+    if not is_local(base) and not allow_remote:
+        print('拒绝执行：非本地写入须显式加 --allow-remote', file=sys.stderr)
+        sys.exit(2)
+
+
+def save_report(report, path):
+    temporary = path + '.tmp'
+    with open(temporary, 'w', encoding='utf-8') as stream:
+        json.dump(report, stream, ensure_ascii=False, indent=1)
+    os.replace(temporary, path)
+
+
 def main():
     parser = argparse.ArgumentParser(description='批量回填封面等元数据')
     parser.add_argument('--base', default=None, help='书影集地址（默认本地 dev；--undo 时默认用报告里的地址）')
@@ -105,6 +120,7 @@ def main():
     parser.add_argument('--overwrite', action='store_true', help='允许覆盖已有值（默认只填空位；配合报告 --undo 可整批撤回）')
     parser.add_argument('--delay', type=float, default=1.0, help='每条之间的间隔秒数（对外部源友好）')
     parser.add_argument('--undo', metavar='REPORT', help='按回填报告撤回一次批量操作')
+    parser.add_argument('--allow-remote', action='store_true', help='允许对非本地地址执行（包括撤回，会真实写数据）')
     parser.add_argument('--proxy', default=None, help='HTTP 代理（如 http://127.0.0.1:<你的代理端口>），访问 workers.dev 被墙时使用')
     args = parser.parse_args()
 
@@ -127,14 +143,14 @@ def main():
             args.base = report_base
         else:
             args.base = explicit_base or BASE
-        print(f'目标环境：{args.base}')
+        check_target(args.base, args.allow_remote)
 
         entries = [e for e in report.get('applied', []) if isinstance(e.get('log_id'), int)]
         skipped = len(report.get('applied', [])) - len(entries)
         suffix = f'（跳过 {skipped} 条无 log_id 的记录）' if skipped else ''
         print(f'按报告撤回 {len(entries)} 条...{suffix}')
-        ok = 0
-        for e in entries:
+        ok, failed = 0, skipped
+        for e in reversed(entries):
             st, d = api_safe(args.base, token, '/api/autofill/undo', 'POST', {'log_id': e['log_id']})
             if st == 200:
                 restored = d.get('restored', [])
@@ -143,14 +159,20 @@ def main():
                     print(f'  ✓ {e["title"]}（恢复 {len(restored)} 个字段）')
                 else:
                     print(f'  - {e["title"]}：没有可恢复字段（可能已被手动修改）')
+                if not restored or d.get('skipped'):
+                    failed += 1
+                    print(f'  未恢复字段：{", ".join(d.get("skipped", [])) or "全部"}')
             else:
+                failed += 1
                 print(f'  ✗ {e["title"]}：{d.get("error", "")}')
             time.sleep(0.3)
         print(f'撤回完成 {ok}/{len(entries)}')
+        if failed:
+            sys.exit(1)
         return
 
     args.base = (args.base or BASE).rstrip('/')
-    print(f'目标环境：{args.base}')
+    check_target(args.base, args.allow_remote)
 
     # 找出待处理条目（翻页取全；缺字段过滤在本地做）
     try:
@@ -176,6 +198,11 @@ def main():
         'manual_review': [],
         'errors': [],
     }
+    os.makedirs('data', exist_ok=True)
+    fd, out = tempfile.mkstemp(prefix=f'backfill_report_{time.strftime("%Y%m%d%H%M%S")}_', suffix='.json', dir='data')
+    os.close(fd)
+    save_report(report, out)
+    print(f'报告：{out}')
     applied_count = 0
     ambiguous = 0
 
@@ -187,7 +214,10 @@ def main():
             preview_body['source'] = args.source
         st, d = api_safe(args.base, token, '/api/autofill/preview', 'POST', preview_body)
         if st != 200:
-            print(f'{prefix} → 跳过（{d.get("error", "搜索失败")}）')
+            error = d.get('error', '搜索失败')
+            print(f'{prefix} → 跳过（{error}）')
+            report['errors'].append({'item_id': it['id'], 'title': title, 'error': error})
+            save_report(report, out)
             time.sleep(args.delay)
             continue
         candidates = d.get('candidates', [])
@@ -201,16 +231,21 @@ def main():
                 if no_year:
                     body['year'] = None
                 st, d = api_safe(args.base, token, '/api/autofill/preview', 'POST', body)
-                if st == 200 and d.get('candidates'):
+                if st != 200:
+                    report['errors'].append({'item_id': it['id'], 'title': title, 'error': d.get('error', '搜索失败')})
+                    save_report(report, out)
+                    break
+                if d.get('candidates'):
                     candidates = d['candidates']
                     used_query = vq
                     break
             if not candidates:
-                print(f'{prefix} → 无候选')
+                print(f'{prefix} → {"搜索失败" if st != 200 else "无候选"}')
                 time.sleep(args.delay)
                 continue
             print(f'{prefix} → 经变体「{used_query}」{"（忽略年份）" if no_year else ""}命中 {len(candidates)} 个候选')
 
+        source = d['source']
         chosen = None
         if args.auto:
             item_title = normalize_title(title)
@@ -230,6 +265,7 @@ def main():
                 report['manual_review'].append(
                     {'item_id': it['id'], 'title': title, 'candidates': candidates}
                 )
+                save_report(report, out)
                 time.sleep(args.delay)
                 continue
         else:
@@ -251,30 +287,32 @@ def main():
                 continue
             chosen = candidates[int(ans) - 1]
 
-        st, d = api_safe(args.base, token, '/api/autofill/apply', 'POST', {
+        apply_body = {
             'item_id': it['id'],
-            'source': d.get('source') or 'tmdb',
+            'source': source,
             'external_id': chosen['externalId'],
             'fields': ALL_FIELDS,
             'overwrite': args.overwrite,
-        })
-        # 注意：preview 的 source 需要透传给 apply；上面 d 在 apply 后被覆盖，重新取一次
+        }
+        if chosen.get('seasonNumber') is not None:
+            apply_body['season'] = chosen['seasonNumber']
+        st, d = api_safe(args.base, token, '/api/autofill/apply', 'POST', apply_body)
         if st == 200:
             filled = [k for k in d.get('applied', {})]
             log_id = d.get('logId')
             applied_count += 1
             report['applied'].append({'item_id': it['id'], 'title': title, 'log_id': log_id})
+            save_report(report, out)
             print(f'  ✓ 已填入：{", ".join(filled) or "仅外部 ID"}（log {log_id}）')
         else:
             print(f'  ✗ 应用失败：{d.get("error", "")}')
             report['errors'].append({'item_id': it['id'], 'title': title, 'error': d.get('error')})
+            save_report(report, out)
         time.sleep(args.delay)
 
-    os.makedirs('data', exist_ok=True)
-    out = f'data/backfill_report_{time.strftime("%Y%m%d%H%M%S")}.json'
-    json.dump(report, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    save_report(report, out)
     print(f'\n完成：应用 {applied_count} 条，待人工 {ambiguous} 条，失败 {len(report["errors"])} 条。报告已写入 {out}')
-    print('批量撤回：python scripts/backfill.py --undo ' + out)
+    print(f'批量撤回：python scripts/backfill.py --undo "{out}"' + ('' if is_local(args.base) else ' --allow-remote'))
     if report['errors']:
         sys.exit(1)
 

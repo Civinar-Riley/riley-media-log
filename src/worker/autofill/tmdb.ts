@@ -278,10 +278,10 @@ export async function tmdbSearch(
   // 分季条目：给最相关的前几个候选补上该季集数，避免必须点进字段页才知道对不对。
   // 只补前 3 个，防止一次搜索打太多 TMDB 请求。
   if (isTv && seasonNo) {
+    for (const c of candidates) c.seasonNumber = seasonNo
     await Promise.all(
       candidates.slice(0, 3).map(async (c) => {
         const info = await tmdbSeasonInfo(env, c.externalId, seasonNo)
-        c.seasonNumber = seasonNo
         c.seasonEpisodeCount = info?.episodes ?? null
         c.seasonYear = info?.year ?? null
       })

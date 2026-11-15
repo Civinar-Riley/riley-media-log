@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarPlus, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { api } from '../api'
+import { encodeFilterList } from '../../shared/filters'
 import { CategoryBadge, CoverImage, FinishBadge, Loading, Modal, PageHeader, RatingStars, StatusBadge } from '../components/ui'
 import { AutofillDialog } from '../components/AutofillDialog'
 import { BackLink } from '../components/ui'
@@ -25,7 +26,7 @@ function PeopleRow({ label, people, param, modeParam }: { label: string; people:
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="label mr-1">{label}</span>
       {people.map((p) => (
-        <Link key={p} to={`/?${param}=${encodeURIComponent(p)}&${modeParam}=any`} className="chip max-w-full min-w-0">
+        <Link key={p} to={`/?${param}=${encodeURIComponent(encodeFilterList([p]))}&${modeParam}=any`} className="chip max-w-full min-w-0">
           <span className="min-w-0 truncate">{p}</span>
         </Link>
       ))}
@@ -193,7 +194,7 @@ export default function ItemDetailPage() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="label mr-1">标签</span>
                   {item.tags.map((t) => (
-                    <Link key={t} to={`/?tags=${encodeURIComponent(t)}&tag_mode=any`} className="chip max-w-full min-w-0">
+                    <Link key={t} to={`/?tags=${encodeURIComponent(encodeFilterList([t]))}&tag_mode=any`} className="chip max-w-full min-w-0">
                       <span className="min-w-0 truncate">{t}</span>
                     </Link>
                   ))}

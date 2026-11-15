@@ -127,7 +127,7 @@ def cmd_logs(args):
     for l in logs:
         undone = '（已撤回）' if l.get('undone_at') else ''
         print(f"log {l['id']}｜{l['applied_at']}｜{l['source']}｜external_id={l['external_id']}{undone}")
-        for f, v in json.loads(l['fields']).items():
+        for f, v in l['fields'].items():
             print(f'    {f}: {v.get("before")}  →  {v.get("after")}')
 
 

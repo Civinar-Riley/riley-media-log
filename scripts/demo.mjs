@@ -10,7 +10,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 
-const DEMO_URL = process.env.DEMO_URL || 'https://logdemo.civinar.eu.cc'
 const PY = process.platform === 'win32' ? 'python' : 'python3'
 
 // 本地 .env 补全变量（CI 上没有这个文件，变量直接来自 secrets）
@@ -20,6 +19,8 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim()
   }
 }
+
+const DEMO_URL = process.env.DEMO_URL || 'https://logdemo.civinar.eu.cc'
 
 function run(command, args, env = {}) {
   const r = spawnSync(command, args, {
@@ -49,12 +50,18 @@ if (sub === 'deploy') {
     process.exit(1)
   }
 
+  const proxy = process.env.DEMO_PROXY
+  const { ProxyAgent } = proxy ? await import('undici') : {}
+  const dispatcher = proxy ? new ProxyAgent(proxy) : undefined
+  const requestOptions = () => ({ dispatcher, signal: AbortSignal.timeout(30_000) })
+
   // 自定义域可能被 Cloudflare 人机验证拦住（CI 数据中心 IP 常见，403「Just a moment…」），
   // 此时自动改走 workers.dev 域名：worker 开着 workers_dev，且该域名不在自己 zone 上，不受盾规则影响
   async function workersDevBase() {
     if (!account || !cfToken) return null
     try {
       const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/subdomain`, {
+        ...requestOptions(),
         headers: { Authorization: `Bearer ${cfToken}` },
       })
       if (!r.ok) return null
@@ -67,10 +74,17 @@ if (sub === 'deploy') {
   }
 
   async function preflight(base) {
-    const r = await fetch(`${base}/api/items?page_size=1`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    return { ok: r.ok, status: r.status, body: r.ok ? '' : await r.text().catch(() => '') }
+    try {
+      const r = await fetch(`${base}/api/items?page_size=1`, {
+        ...requestOptions(),
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!r.ok) return { ok: false, status: r.status, body: await r.text().catch(() => '') }
+      const data = await r.json()
+      return { ok: Array.isArray(data.items) && typeof data.total === 'number', status: r.status, body: '响应不是条目列表' }
+    } catch (error) {
+      return { ok: false, status: 0, body: error.message }
+    }
   }
 
   let base = DEMO_URL
@@ -97,15 +111,16 @@ if (sub === 'deploy') {
     }
     process.exit(1)
   }
-  const proxyArgs = process.env.DEMO_PROXY ? ['--proxy', process.env.DEMO_PROXY] : []
+  await dispatcher?.close()
+  const proxyArgs = proxy ? ['--proxy', proxy] : []
   console.log('① 清空演示库…')
   run('npx', ['wrangler', 'd1', 'execute', 'riley-media-log-demo', '--remote', '--file', 'scripts/demo_wipe.sql'], {
     CLOUDFLARE_ENV: 'demo',
   })
   console.log('② 重灌演示数据…')
-  run(PY, ['scripts/seed_demo.py', '--base', base, '--token', token, '--allow-remote', ...proxyArgs])
+  run(PY, ['-X', 'utf8', 'scripts/seed_demo.py', '--base', base, '--token', token, '--allow-remote', ...proxyArgs])
   console.log('③ 批量补全封面与主创（只填空位）…')
-  run(PY, ['scripts/backfill.py', '--base', base, '--token', token, '--missing', 'cover_url', '--auto', ...proxyArgs])
+  run(PY, ['-X', 'utf8', 'scripts/backfill.py', '--base', base, '--token', token, '--allow-remote', '--missing', 'cover_url', '--auto', ...proxyArgs])
   console.log('✅ 演示站重置完成')
 } else {
   console.error('用法：node scripts/demo.mjs <deploy|reset>')

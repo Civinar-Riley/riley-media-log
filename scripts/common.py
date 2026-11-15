@@ -5,6 +5,7 @@
 - 网络：访问 workers.dev 国内直连不通，用 --proxy 挂代理；Cloudflare 会按 TLS/UA
   指纹拦 Python 默认请求（1010），统一带浏览器 UA 可过
 """
+import http.client
 import json
 import urllib.error
 import urllib.parse
@@ -48,7 +49,10 @@ def api(base, token, path, method='GET', body=None, timeout=30):
     try:
         r = urllib.request.urlopen(req, timeout=timeout)
         data = r.read()
-        return r.status, (json.loads(data) if data else None)
+        try:
+            return r.status, (json.loads(data) if data else None)
+        except (ValueError, UnicodeError) as e:
+            raise RuntimeError(f'HTTP {r.status}: 响应不是 JSON') from e
     except urllib.error.HTTPError as e:
         raw = e.read() or b''
         try:
@@ -56,7 +60,9 @@ def api(base, token, path, method='GET', body=None, timeout=30):
         except Exception:
             raise RuntimeError(f'HTTP {e.code}: {raw[:150].decode("utf-8", "replace")}')
     except urllib.error.URLError as e:
-        raise RuntimeError(f'网络错误（访问 workers.dev 需代理，可用 --proxy 指定）: {e.reason}')
+        raise RuntimeError(f'网络错误（访问 workers.dev 需代理，可用 --proxy 指定）: {e.reason}') from e
+    except (OSError, http.client.HTTPException) as e:
+        raise RuntimeError(f'请求未完成: {e}') from e
 
 
 def fetch_all_items(base, token, category=None, page_size=200):

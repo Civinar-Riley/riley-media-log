@@ -6,6 +6,7 @@ import { toPinyinText, toPinyinInitial } from '../pinyin'
 import { tmdbSearch, tmdbDetails, tmdbConfigured } from './tmdb'
 import { bgmSearch, bgmDetails, bgmConfigured, bgmSubjectType } from './bangumi'
 import { seasonFromTitle } from '../../shared/season'
+import { normalizeItemPeople } from '../routes/settings'
 
 export type AutofillSource = 'tmdb' | 'bangumi'
 
@@ -87,21 +88,26 @@ export async function applyAutofill(
   source: AutofillSource,
   externalId: string,
   requested: string[],
-  overwrite = false
+  overwrite = false,
+  candidateSeason?: number
 ): Promise<AppliedResult | { error: string }> {
   const item = await db.prepare('SELECT * FROM items WHERE id = ?').bind(itemId).first()
   if (!item) return { error: '条目不存在' }
+  const season = source === 'tmdb' && item.category !== 'movie'
+    ? itemSeason(item) ?? candidateSeason ?? null
+    : null
 
   let details
   try {
     details =
       source === 'tmdb'
-        ? await tmdbDetails(env, item.category === 'movie' ? 'movie' : 'tv', externalId, itemSeason(item))
+        ? await tmdbDetails(env, item.category === 'movie' ? 'movie' : 'tv', externalId, season)
         : await bgmDetails(env, externalId)
   } catch (e) {
     return { error: e instanceof Error ? e.message : '外部数据源请求失败' }
   }
 
+  await normalizeItemPeople(db, details.fields)
   // 外部评分并入可填充字段，走统一的「只填空」流程
   const provided: Record<string, unknown> = { ...details.fields }
   if (details.rating !== null) provided.external_rating = details.rating
@@ -124,6 +130,13 @@ export async function applyAutofill(
     const value = normalizeValue(field, provided[field])
     patch[field] = value
     logFields[field] = { before: hasValue ? current : normalizeValue(field, null), after: value }
+  }
+
+  // 季信息写入后保留其上下文：覆盖官方标题也不能抹掉只记在原标题里的季号。
+  // 仅同步与季有关的实际写入；只补人员/评分等整剧字段时不改季号。
+  if (season && item.season !== season && ['title', 'cover_url', 'year', 'episode_count'].some((k) => k in patch)) {
+    patch.season = season
+    logFields.season = { before: item.season ?? null, after: season }
   }
 
   // 补了标题就得同步拼音列，否则拼音搜索/排序还指向旧读音（派生值，不进快照）
@@ -227,24 +240,22 @@ export async function undoAutofill(
   const sets = Object.keys(restore).map((k) => `${k} = ?`)
   sets.push('updated_at = ?')
   const vals = [...Object.values(restore), now]
-  await db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, itemId).run()
-  const mark = await db
-    .prepare('UPDATE autofill_log SET undone_at = ? WHERE id = ? AND undone_at IS NULL')
-    .bind(now, logId)
-    .run()
+  // 恢复、标记快照与动态一起提交，失败时保留完整的重试机会。
+  const [, mark] = await db.batch([
+    db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, itemId),
+    db.prepare('UPDATE autofill_log SET undone_at = ? WHERE id = ? AND undone_at IS NULL').bind(now, logId),
+    db
+      .prepare('INSERT INTO activity_log (item_id, action, detail, created_at) VALUES (?,?,?,?)')
+      .bind(
+        itemId,
+        'autofill',
+        `撤回自动补全（${AUTOFILL_SOURCE_LABEL[source] ?? source}）：${
+          skipped.length ? '部分字段' : restoredNames.join('、')
+        }已恢复`,
+        now
+      ),
+  ])
   if (!mark.meta.changes) return { error: '这条补全已经撤回过了' }
-
-  await db
-    .prepare('INSERT INTO activity_log (item_id, action, detail, created_at) VALUES (?,?,?,?)')
-    .bind(
-      itemId,
-      'autofill',
-      `撤回自动补全（${AUTOFILL_SOURCE_LABEL[source] ?? source}）：${
-        skipped.length ? '部分字段' : restoredNames.join('、')
-      }已恢复`,
-      now
-    )
-    .run()
 
   return { restored: restoredNames, skipped }
 }
@@ -254,7 +265,8 @@ export async function autofillFieldOptions(
   env: Env,
   itemId: number,
   source: AutofillSource,
-  externalId: string
+  externalId: string,
+  candidateSeason?: number
 ): Promise<
   | { error: string }
   | {
@@ -270,12 +282,13 @@ export async function autofillFieldOptions(
   try {
     details =
       source === 'tmdb'
-        ? await tmdbDetails(env, item.category === 'movie' ? 'movie' : 'tv', externalId, itemSeason(item))
+        ? await tmdbDetails(env, item.category === 'movie' ? 'movie' : 'tv', externalId, itemSeason(item) ?? candidateSeason)
         : await bgmDetails(env, externalId)
   } catch (e) {
     return { error: e instanceof Error ? e.message : '外部数据源请求失败' }
   }
 
+  await normalizeItemPeople(env.DB, details.fields)
   const provided = details.fields as Record<string, unknown>
   if (details.rating !== null) provided.external_rating = details.rating
 

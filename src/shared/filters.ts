@@ -3,11 +3,24 @@ import { STATUSES, FINISH_STATUSES } from './types'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
+/** 普通值沿用逗号分隔；名称本身含逗号时用 JSON 数组保留边界。 */
+export function encodeFilterList(values: string[]): string {
+  return values.some((v) => v.includes(',') || v.startsWith('[')) ? JSON.stringify(values) : values.join(',')
+}
+
 function csvList(sp: URLSearchParams, key: string, allowed?: readonly string[]): string[] {
   const raw = sp.get(key)
   if (!raw) return []
-  // 去重 + 限长：避免恶意/异常 URL 拼出超过 D1 绑定参数上限的查询
-  const list = [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 20)
+  let values = raw.split(',')
+  if (raw.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) values = parsed
+    } catch {
+      // 旧链接里的普通文本仍按逗号分隔读取。
+    }
+  }
+  const list = [...new Set(values.map((s) => s.trim()).filter(Boolean))].slice(0, 20)
   return allowed ? list.filter((v) => (allowed as readonly string[]).includes(v)) : list
 }
 

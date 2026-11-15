@@ -84,9 +84,10 @@ fieldsRoutes.post('/rename', async (c) => {
   if (!fromList.length) return c.json({ error: '没有要改名的值' }, 400)
 
   if (field === 'channel') {
-    const ph = fromList.map(() => '?').join(',')
-    const res = await c.env.DB.prepare(`UPDATE items SET channel = ?, updated_at = ? WHERE channel IN (${ph})`)
-      .bind(data.to, nowISO(), ...fromList)
+    const res = await c.env.DB.prepare(
+      'UPDATE items SET channel = ?, updated_at = ? WHERE channel IN (SELECT value FROM json_each(?))'
+    )
+      .bind(data.to, nowISO(), JSON.stringify(fromList))
       .run()
     return c.json({ updated: res.meta.changes ?? 0 })
   }

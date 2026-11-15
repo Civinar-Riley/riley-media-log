@@ -13,7 +13,7 @@ JSON 格式见 docs/import-template.json：顶层可以是数组，也可以是 
     完结 finish_status：完结/连载/烂尾（小说漫画用）
 缺的字段以后可以在网页上对条目点「自动补全」补齐。
 
-默认按「标题+年份+类别」查重：目标库里已存在的条目会跳过（--allow-duplicates 可强制全部导入）。
+默认按「标题+年份+类别+季号」查重：目标库里已存在的条目会跳过（--allow-duplicates 可强制全部导入）。
 """
 import argparse
 import json
@@ -68,7 +68,7 @@ def main():
     if not args.allow_duplicates:
         try:
             for i in fetch_all_items(base, token):
-                existing.add((i['title'], i.get('year'), i.get('category')))
+                existing.add((i['title'], i.get('year'), i.get('category'), i.get('season')))
         except RuntimeError as e:
             print(e, file=sys.stderr)
             sys.exit(1)
@@ -98,7 +98,7 @@ def main():
                 v = int(v.strip())
             body[f] = v
 
-        key = (title, body.get('year'), category)
+        key = (title, body.get('year'), category, body.get('season'))
         if not args.allow_duplicates and key in existing:
             skipped += 1
             continue

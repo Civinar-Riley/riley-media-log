@@ -302,7 +302,7 @@ function ItemRow({ item }: { item: Item }) {
       onClick={() => navigate(`/items/${item.id}`)}
     >
       <td className="max-w-56 px-3 py-2.5">
-        <Link to={`/items/${item.id}`} className="serif font-medium text-ink hover:text-brand">
+        <Link to={`/items/${item.id}`} onClick={(e) => e.stopPropagation()} className="serif font-medium text-ink hover:text-brand">
           {item.title}
         </Link>
         {item.season ? <span className="ml-1 text-xs text-faint">第{item.season}季</span> : null}
@@ -338,7 +338,8 @@ export default function ListPage() {
     localStorage.getItem('rml-view') === 'table' ? 'table' : 'grid'
   )
   const [showFilters, setShowFilters] = useState(false)
-  const [searchText, setSearchText] = useState(filters.q ?? '')
+  const [searchDraft, setSearchDraft] = useState({ query: filters.q ?? '', text: filters.q ?? '' })
+  const searchText = searchDraft.query === (filters.q ?? '') ? searchDraft.text : filters.q ?? ''
   const restored = useRef(false)
 
   // 记住上次浏览状态：进入片单且 URL 无任何参数时，恢复完整筛选组合
@@ -372,14 +373,14 @@ export default function ListPage() {
 
   // 页码超过实际页数（手改 URL、删掉最后一页数据）时收敛到最后一页，避免误显示“空库”
   useEffect(() => {
-    if (!itemsQ.data) return
+    if (!itemsQ.data || itemsQ.isPlaceholderData) return
     const maxPage = Math.max(1, Math.ceil(itemsQ.data.total / pageSize))
     if (page <= maxPage) return
     const next = new URLSearchParams(sp)
     if (maxPage <= 1) next.delete('page')
     else next.set('page', String(maxPage))
     setSp(next, { replace: true })
-  }, [itemsQ.data, page, pageSize, sp, setSp])
+  }, [itemsQ.data, itemsQ.isPlaceholderData, page, pageSize, sp, setSp])
   const facetsQ = useQuery({ queryKey: ['facets'], queryFn: api.facets, staleTime: 5 * 60_000 })
   const statusCountsQ = useQuery({
     queryKey: ['status-counts', filters.category?.join(',') ?? ''],
@@ -392,22 +393,21 @@ export default function ListPage() {
     [facetsQ.data]
   )
 
-  useEffect(() => setSearchText(filters.q ?? ''), [filters.q])
   useEffect(() => {
+    setSearchDraft({ query: filters.q ?? '', text: filters.q ?? '' })
+  }, [filters.q])
+  useEffect(() => {
+    const query = searchText.trim()
+    if (query === (filters.q ?? '')) return
     const t = setTimeout(() => {
-      // 用函数式更新读取最新 URL，避免输入后 350ms 内又改筛选时把新筛选覆盖掉
-      setSp((prev) => {
-        const current = parseFilters(prev)
-        if (searchText === (current.q ?? '')) return prev
-        const next = { ...current, q: searchText || undefined }
-        const nsp = new URLSearchParams(filtersToQuery(next))
-        const ps = prev.get('page_size')
-        if (ps) nsp.set('page_size', ps)
-        return nsp
-      })
+      const next = { ...filters, q: query || undefined }
+      const nsp = new URLSearchParams(filtersToQuery(next))
+      const ps = sp.get('page_size')
+      if (ps) nsp.set('page_size', ps)
+      setSp(nsp, { replace: true })
     }, 350)
     return () => clearTimeout(t)
-  }, [searchText, setSp])
+  }, [searchText, filters, sp, setSp])
 
   function patchFilters(patch: Partial<ItemFilters>) {
     const next = { ...filters, ...patch }
@@ -535,7 +535,7 @@ export default function ListPage() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
+          onChange={(e) => setSearchDraft({ query: filters.q ?? '', text: e.target.value })}
           placeholder="搜索标题/拼音，可空格分隔多个关键字"
           className="input h-10 flex-1 text-base md:max-w-md"
         />

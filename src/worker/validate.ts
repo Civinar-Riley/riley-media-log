@@ -11,7 +11,7 @@ const strArr = z
 const itemFields = {
   title: z.string().trim().min(1, '标题不能为空').max(200),
   category: z.string().trim().min(1, '类别不能为空').max(40),
-  year: z.number().int().min(1850).max(2100).nullish().transform((v) => v ?? null),
+  year: z.number().int().min(1).max(2100).nullish().transform((v) => v ?? null),
   season: z.number().int().min(1).max(200).nullish().transform((v) => v ?? null),
   regions: strArr,
   tags: strArr,
@@ -109,6 +109,7 @@ export const autofillApplySchema = z.object({
   item_id: z.number().int().positive(),
   source: autofillSourceSchema,
   external_id: z.string().trim().min(1).max(40).regex(/^\d+$/, '外部 ID 必须是数字'),
+  season: z.number().int().min(1).max(200).optional(),
   fields: z.array(z.string().trim().min(1).max(40)).min(1, '至少选择一个要补全的字段').max(10),
   /** true 时允许覆盖已有值（默认只填空位） */
   overwrite: z.boolean().optional(),
@@ -118,6 +119,7 @@ export const autofillFieldOptionsSchema = z.object({
   item_id: z.number().int().positive(),
   source: autofillSourceSchema,
   external_id: z.string().trim().min(1).max(40).regex(/^\d+$/, '外部 ID 必须是数字'),
+  season: z.number().int().min(1).max(200).optional(),
 })
 
 export const autofillUndoSchema = z.object({ log_id: z.number().int().positive() })

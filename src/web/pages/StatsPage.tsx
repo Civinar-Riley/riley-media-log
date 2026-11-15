@@ -15,6 +15,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api } from '../api'
+import { encodeFilterList } from '../../shared/filters'
 import { useCategories } from '../cat'
 import { EmptyState, Loading, PageHeader } from '../components/ui'
 
@@ -211,19 +212,19 @@ export default function StatsPage() {
         </ChartCard>
 
         <ChartCard title="地区 TOP 10" hint="点击下钻" delay={200}>
-          <TopBar data={stats.by_region} onPick={(v) => go(`regions=${encodeURIComponent(v)}&region_mode=any`)} />
+          <TopBar data={stats.by_region} onPick={(v) => go(`regions=${encodeURIComponent(encodeFilterList([v]))}&region_mode=any`)} />
         </ChartCard>
         <ChartCard title="类型标签 TOP 10" hint="点击下钻" delay={240}>
-          <TopBar data={stats.by_tag} onPick={(v) => go(`tags=${encodeURIComponent(v)}&tag_mode=any`)} color="var(--seal)" />
+          <TopBar data={stats.by_tag} onPick={(v) => go(`tags=${encodeURIComponent(encodeFilterList([v]))}&tag_mode=any`)} color="var(--seal)" />
         </ChartCard>
         <ChartCard title="作者 TOP 10" hint="小说 / 漫画 · 点击下钻" delay={280}>
-          <TopBar data={stats.by_author} onPick={(v) => go(`authors=${encodeURIComponent(v)}&author_mode=any`)} />
+          <TopBar data={stats.by_author} onPick={(v) => go(`authors=${encodeURIComponent(encodeFilterList([v]))}&author_mode=any`)} />
         </ChartCard>
         <ChartCard title="导演 TOP 10" hint="点击下钻" delay={320}>
-          <TopBar data={stats.by_director} onPick={(v) => go(`directors=${encodeURIComponent(v)}&director_mode=any`)} color="var(--seal)" />
+          <TopBar data={stats.by_director} onPick={(v) => go(`directors=${encodeURIComponent(encodeFilterList([v]))}&director_mode=any`)} color="var(--seal)" />
         </ChartCard>
         <ChartCard title="主演 TOP 10" hint="点击下钻" delay={360}>
-          <TopBar data={stats.by_actor} onPick={(v) => go(`actors=${encodeURIComponent(v)}&actor_mode=any`)} />
+          <TopBar data={stats.by_actor} onPick={(v) => go(`actors=${encodeURIComponent(encodeFilterList([v]))}&actor_mode=any`)} />
         </ChartCard>
       </div>
     </div>

@@ -4,6 +4,8 @@ import type { QueryClient } from '@tanstack/react-query'
 export function invalidateLibrary(qc: QueryClient): void {
   for (const key of [
     'items',
+    'title-suggest',
+    'picker-search',
     'item',
     'stats',
     'status-counts',
