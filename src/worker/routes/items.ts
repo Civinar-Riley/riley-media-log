@@ -264,7 +264,7 @@ itemsRoutes.delete('/:id', async (c) => {
   return c.json({ ok: true })
 })
 
-/** 追加一条观看流水（二刷/补记） */
+/** 追加一条观看流水（二刷/补记），同时标为看过 */
 itemsRoutes.post('/:id/viewings', async (c) => {
   const id = numId(c.req.param('id'))
   if (id === null) return c.json({ error: 'ID 不合法' }, 400)
@@ -273,18 +273,23 @@ itemsRoutes.post('/:id/viewings', async (c) => {
 
   const data = await readBody(c, viewingCreateSchema)
   if (data instanceof Response) return data
-  const row = await c.env.DB.prepare(
-    'INSERT INTO viewings (item_id, watched_on, comment, created_at) VALUES (?,?,?,?) RETURNING *'
-  )
-    .bind(id, data.watched_on, data.comment, nowISO())
-    .first()
-  await logActivity(
-    c.env.DB,
-    id,
-    'viewing_added',
-    `观看记录：${data.watched_on}${data.comment ? `（${data.comment.slice(0, 40)}）` : ''}`
-  )
-  return c.json(row, 201)
+  const now = nowISO()
+  const [viewing] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      'INSERT INTO viewings (item_id, watched_on, comment, created_at) VALUES (?,?,?,?) RETURNING *'
+    ).bind(id, data.watched_on, data.comment, now),
+    c.env.DB.prepare(
+      `INSERT INTO activity_log (item_id, action, detail, created_at)
+       SELECT id, 'status_changed',
+         '状态：' || CASE status WHEN 'want' THEN ? WHEN 'watching' THEN ? WHEN 'dropped' THEN ? END || ' → ' || ?, ?
+       FROM items WHERE id = ? AND status <> 'done'`
+    ).bind(STATUS_LABELS.want, STATUS_LABELS.watching, STATUS_LABELS.dropped, STATUS_LABELS.done, now, id),
+    c.env.DB.prepare("UPDATE items SET status = 'done', updated_at = ? WHERE id = ?").bind(now, id),
+    c.env.DB.prepare(
+      'INSERT INTO activity_log (item_id, action, detail, created_at) VALUES (?,?,?,?)'
+    ).bind(id, 'viewing_added', `观看记录：${data.watched_on}${data.comment ? `（${data.comment.slice(0, 40)}）` : ''}`, now),
+  ])
+  return c.json(viewing.results[0], 201)
 })
 
 itemsRoutes.delete('/:id/viewings/:vid', async (c) => {
