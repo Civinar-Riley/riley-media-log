@@ -1,81 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, LayoutGrid, List, Plus, SlidersHorizontal, X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, LayoutGrid, List, Plus, Search } from 'lucide-react'
 import { api, filtersToQuery } from '../api'
 import { parseFilters } from '../../shared/filters'
-import { STATUSES, STATUS_LABELS, FINISH_STATUSES, FINISH_LABELS } from '../../shared/types'
-import type { Item, ItemFilters, Facets, Status, FinishStatus } from '../../shared/types'
+import { STATUSES, STATUS_LABELS } from '../../shared/types'
+import type { Item, ItemFilters } from '../../shared/types'
 import { EmptyState, Loading, PageHeader, Pagination, RatingStars, StatusBadge, CategoryBadge } from '../components/ui'
 import { ItemCard } from '../components/ItemCard'
 import { useCategories } from '../cat'
-
-/* ---------------- 筛选面板 ---------------- */
-
-function ModeToggle({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: 'any' | 'all'
-  onChange: (v: 'any' | 'all') => void
-  disabled?: boolean
-}) {
-  if (disabled) return null
-  return (
-    <span className="inline-flex overflow-hidden rounded border border-line text-[11px]">
-      {(['any', 'all'] as const).map((m) => (
-        <button
-          key={m}
-          type="button"
-          onClick={() => onChange(m)}
-          className={`px-1.5 py-0.5 transition ${value === m ? 'bg-brand text-brand-ink' : 'bg-card text-faint hover:text-ink'}`}
-        >
-          {m === 'any' ? '任一' : '全部'}
-        </button>
-      ))}
-    </span>
-  )
-}
-
-function ChipRow({
-  options,
-  selected,
-  onToggle,
-  mode,
-  onMode,
-}: {
-  options: string[]
-  selected: string[]
-  onToggle: (v: string) => void
-  mode?: 'any' | 'all'
-  onMode?: (m: 'any' | 'all') => void
-}) {
-  if (!options.length) return <p className="text-xs text-faint">暂无可选项</p>
-  return (
-    <div className="flex items-start gap-2">
-      <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
-        {options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            className={`chip ${selected.includes(opt) ? 'chip-on' : ''}`}
-            onClick={() => onToggle(opt)}
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-      {onMode && selected.length > 1 && (
-        <ModeToggle value={mode ?? 'any'} onChange={onMode} />
-      )}
-    </div>
-  )
-}
-
-function toggleIn(list: string[], v: string): string[] {
-  return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
-}
+import { LibraryFilters } from '../components/LibraryFilters'
+import { clearedFilters } from '../components/filterState'
 
 const SORT_OPTIONS = [
   ['created_at', '添加时间'],
@@ -85,212 +20,6 @@ const SORT_OPTIONS = [
   ['rating', '评分'],
   ['watched', '观看日期'],
 ] as const
-
-function FilterBar({
-  filters,
-  facets,
-  onChange,
-  onClear,
-}: {
-  filters: ItemFilters
-  facets: Facets | undefined
-  onChange: (patch: Partial<ItemFilters>) => void
-  onClear: () => void
-}) {
-  const triState = (
-    value: boolean | undefined,
-    on: () => Partial<ItemFilters>,
-    all: () => Partial<ItemFilters>,
-    none: () => Partial<ItemFilters>
-  ) => (
-    <div className="flex gap-1.5">
-      <button className={`chip ${value === undefined ? 'chip-on' : ''}`} onClick={() => value !== undefined && onChange(all())}>
-        全部
-      </button>
-      <button className={`chip ${value === true ? 'chip-on' : ''}`} onClick={() => value !== true && onChange(on())}>
-        有
-      </button>
-      <button className={`chip ${value === false ? 'chip-on' : ''}`} onClick={() => value !== false && onChange(none())}>
-        无
-      </button>
-    </div>
-  )
-
-  return (
-    <div className="card anim space-y-4 p-4">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <p className="label mb-1.5">状态</p>
-          <ChipRow
-            options={STATUSES.map((s) => STATUS_LABELS[s])}
-            selected={filters.status?.map((s) => STATUS_LABELS[s as Status]) ?? []}
-            onToggle={(label) => {
-              const st = STATUSES.find((s) => STATUS_LABELS[s] === label)!
-              onChange({ status: toggleIn(filters.status ?? [], st) })
-            }}
-          />
-        </div>
-        <div>
-          <p className="label mb-1.5">年份区间</p>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              placeholder="从"
-              className="input w-24"
-              value={filters.year_min ?? ''}
-              onChange={(e) => onChange({ year_min: e.target.value ? Number(e.target.value) : undefined })}
-            />
-            <span className="text-faint">—</span>
-            <input
-              type="number"
-              placeholder="到"
-              className="input w-24"
-              value={filters.year_max ?? ''}
-              onChange={(e) => onChange({ year_max: e.target.value ? Number(e.target.value) : undefined })}
-            />
-          </div>
-        </div>
-        <div>
-          <p className="label mb-1.5">评分下限</p>
-          <div className="flex gap-1.5">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                className={`chip ${filters.rating_min === n ? 'chip-on' : ''}`}
-                onClick={() => onChange({ rating_min: filters.rating_min === n ? undefined : n, rating_max: undefined })}
-              >
-                ★{n}+
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <p className="label mb-1.5">观看日期（想回顾某段时间看的）</p>
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              className="input w-36"
-              value={filters.watched_from ?? ''}
-              onChange={(e) => onChange({ watched_from: e.target.value || undefined })}
-            />
-            <span className="text-faint">—</span>
-            <input
-              type="date"
-              className="input w-36"
-              value={filters.watched_to ?? ''}
-              onChange={(e) => onChange({ watched_to: e.target.value || undefined })}
-            />
-          </div>
-        </div>
-        <div>
-          <p className="label mb-1.5">完结状态（小说/漫画）</p>
-          <ChipRow
-            options={FINISH_STATUSES.map((s) => FINISH_LABELS[s])}
-            selected={filters.finish_status?.map((s) => FINISH_LABELS[s as FinishStatus]) ?? []}
-            onToggle={(label) => {
-              const fs = FINISH_STATUSES.find((s) => FINISH_LABELS[s] === label)!
-              onChange({ finish_status: toggleIn(filters.finish_status ?? [], fs) })
-            }}
-          />
-        </div>
-      </div>
-
-      <div>
-        <p className="label mb-1.5">地区</p>
-        <ChipRow
-          options={facets?.regions.map(([v]) => v) ?? []}
-          selected={filters.regions ?? []}
-          onToggle={(v) => onChange({ regions: toggleIn(filters.regions ?? [], v) })}
-          mode={filters.region_mode}
-          onMode={(m) => onChange({ region_mode: m })}
-        />
-      </div>
-      <div>
-        <p className="label mb-1.5">类型标签</p>
-        <ChipRow
-          options={facets?.tags.map(([v]) => v) ?? []}
-          selected={filters.tags ?? []}
-          onToggle={(v) => onChange({ tags: toggleIn(filters.tags ?? [], v) })}
-          mode={filters.tag_mode}
-          onMode={(m) => onChange({ tag_mode: m })}
-        />
-      </div>
-      <div>
-        <p className="label mb-1.5">作者</p>
-        <ChipRow
-          options={facets?.authors.map(([v]) => v) ?? []}
-          selected={filters.authors ?? []}
-          onToggle={(v) => onChange({ authors: toggleIn(filters.authors ?? [], v) })}
-          mode={filters.author_mode}
-          onMode={(m) => onChange({ author_mode: m })}
-        />
-      </div>
-      <div>
-        <p className="label mb-1.5">导演</p>
-        <ChipRow
-          options={facets?.directors.map(([v]) => v) ?? []}
-          selected={filters.directors ?? []}
-          onToggle={(v) => onChange({ directors: toggleIn(filters.directors ?? [], v) })}
-          mode={filters.director_mode}
-          onMode={(m) => onChange({ director_mode: m })}
-        />
-      </div>
-      <div>
-        <p className="label mb-1.5">主演</p>
-        <ChipRow
-          options={facets?.actors.map(([v]) => v) ?? []}
-          selected={filters.actors ?? []}
-          onToggle={(v) => onChange({ actors: toggleIn(filters.actors ?? [], v) })}
-          mode={filters.actor_mode}
-          onMode={(m) => onChange({ actor_mode: m })}
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <div>
-          <p className="label mb-1.5">封面</p>
-          {triState(
-            filters.has_cover,
-            () => ({ has_cover: true }),
-            () => ({ has_cover: undefined }),
-            () => ({ has_cover: false })
-          )}
-        </div>
-        <div>
-          <p className="label mb-1.5">观后感</p>
-          {triState(
-            filters.has_review,
-            () => ({ has_review: true }),
-            () => ({ has_review: undefined }),
-            () => ({ has_review: false })
-          )}
-        </div>
-        <div>
-          <p className="label mb-1.5">观看渠道</p>
-          <select
-            className="input"
-            value={filters.channel ?? ''}
-            onChange={(e) => onChange({ channel: e.target.value || undefined })}
-          >
-            <option value="">全部渠道</option>
-            {(facets?.channels ?? []).map(([v]) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="flex justify-end border-t border-line pt-3">
-        <button className="btn btn-ghost h-8 text-danger" onClick={onClear}>
-          <X className="h-3.5 w-3.5" />
-          清空筛选
-        </button>
-      </div>
-    </div>
-  )
-}
 
 /* ---------------- 列表视图行 ---------------- */
 
@@ -337,7 +66,6 @@ export default function ListPage() {
   const [view, setView] = useState<'grid' | 'table'>(() =>
     localStorage.getItem('rml-view') === 'table' ? 'table' : 'grid'
   )
-  const [showFilters, setShowFilters] = useState(false)
   const [searchDraft, setSearchDraft] = useState({ query: filters.q ?? '', text: filters.q ?? '' })
   const searchText = searchDraft.query === (filters.q ?? '') ? searchDraft.text : filters.q ?? ''
   const restored = useRef(false)
@@ -418,6 +146,14 @@ export default function ListPage() {
     setSp(nsp)
   }
 
+  function clearFilters() {
+    setSearchDraft({ query: '', text: '' })
+    const next = new URLSearchParams(filtersToQuery(clearedFilters(filters)))
+    const ps = sp.get('page_size')
+    if (ps) next.set('page_size', ps)
+    setSp(next)
+  }
+
   function setSort(sort: ItemFilters['sort']) {
     patchFilters({ sort, order: filters.order })
   }
@@ -441,6 +177,7 @@ export default function ListPage() {
     !!filters.channel ||
     !!filters.watched_from ||
     !!filters.watched_to ||
+    filters.list_id !== undefined ||
     !!filters.q
 
   function setViewMode(v: 'grid' | 'table') {
@@ -515,46 +252,45 @@ export default function ListPage() {
         ))}
       </div>
 
-      {/* 状态快捷条（与筛选器里的状态是同一参数，计数随当前类别页签） */}
-      <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+      <div className="mb-4 flex flex-wrap items-center gap-1.5" role="group" aria-label="观看状态">
+        <button type="button" className={`btn h-8 px-2.5 text-xs ${!filters.status?.length ? 'border-brand/40 bg-brand-soft text-brand' : 'btn-ghost'}`} aria-pressed={!filters.status?.length} onClick={() => patchFilters({ status: [] })}>全部状态</button>
         {STATUSES.map((s) => {
-          const active = filters.status?.length === 1 && filters.status[0] === s
+          const active = filters.status?.includes(s) ?? false
           return (
             <button
               key={s}
-              className={`chip ${active ? 'chip-on' : ''}`}
-              onClick={() => patchFilters({ status: active ? [] : [s] })}
+              type="button"
+              className={`btn h-8 px-2.5 text-xs ${active ? 'border-brand/40 bg-brand-soft text-brand' : 'btn-ghost'}`}
+              aria-pressed={active}
+              onClick={() => patchFilters({ status: active ? filters.status!.filter((v) => v !== s) : [...filters.status ?? [], s] })}
             >
               {STATUS_LABELS[s]}
-              <span className="text-[11px] opacity-70">{statusCountsQ.data?.[s] ?? 0}</span>
+              <span className="text-[11px] tabular-nums opacity-70">{statusCountsQ.data?.[s] ?? 0}</span>
             </button>
           )
         })}
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input
-          value={searchText}
-          onChange={(e) => setSearchDraft({ query: filters.q ?? '', text: e.target.value })}
-          placeholder="搜索标题/拼音，可空格分隔多个关键字"
-          className="input h-10 flex-1 text-base md:max-w-md"
-        />
-        <button
-          className={`btn ${hasActiveFilters ? 'border-brand/60 text-brand' : ''}`}
-          onClick={() => setShowFilters((v) => !v)}
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          筛选{hasActiveFilters ? ' · 已启用' : ''}
-        </button>
-        <select className="input w-32" value={filters.sort} onChange={(e) => setSort(e.target.value as ItemFilters['sort'])}>
-          {SORT_OPTIONS.map(([k, label]) => (
-            <option key={k} value={k}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <label className="relative basis-full md:mr-auto md:max-w-md md:flex-1 md:basis-auto">
+          <Search className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-faint" />
+          <input
+            value={searchText}
+            onChange={(e) => setSearchDraft({ query: filters.q ?? '', text: e.target.value })}
+            placeholder="搜索标题 / 拼音"
+            aria-label="搜索标题或拼音"
+            className="input h-10 pl-9 text-base"
+          />
+        </label>
+        <label className="ml-auto flex items-center gap-2 text-xs text-soft">
+          排序
+          <select aria-label="排序方式" className="input w-28" value={filters.sort} onChange={(e) => setSort(e.target.value as ItemFilters['sort'])}>
+            {SORT_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+        </label>
         <button
           className="btn h-9 w-9 px-0"
+          aria-label={filters.order === 'desc' ? '降序，点击改为升序' : '升序，点击改为降序'}
           title={filters.order === 'desc' ? '降序' : '升序'}
           onClick={() => patchFilters({ order: filters.order === 'desc' ? 'asc' : 'desc' })}
         >
@@ -562,16 +298,7 @@ export default function ListPage() {
         </button>
       </div>
 
-      {showFilters && (
-        <div className="mb-4">
-          <FilterBar
-            filters={filters}
-            facets={facetsQ.data}
-            onChange={patchFilters}
-            onClear={() => setSp(new URLSearchParams())}
-          />
-        </div>
-      )}
+      <LibraryFilters filters={filters} facets={facetsQ.data} loading={facetsQ.isPending} error={facetsQ.isError} onRetry={() => { void facetsQ.refetch() }} onChange={patchFilters} onClear={clearFilters} />
 
       {itemsQ.isLoading ? (
         <Loading />
@@ -614,7 +341,7 @@ export default function ListPage() {
           hint={hasActiveFilters ? '换个条件试试，或清空筛选看全部。' : '点右上角「记一笔」开始记录，或者先把 Excel 存量导入。'}
           action={
             hasActiveFilters ? (
-              <button className="btn" onClick={() => setSp(new URLSearchParams())}>
+              <button className="btn" onClick={clearFilters}>
                 清空筛选
               </button>
             ) : (
